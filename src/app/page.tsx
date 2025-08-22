@@ -18,6 +18,15 @@ export default function Home() {
   const [playlistPreviews, setPlaylistPreviews] = useState<PlaylistPreview[]>([]);
   const [isConnectingToServer, setIsConnectingToServer] = useState(false);
   const [connectionAttempted, setConnectionAttempted] = useState<string | null>(null);
+  const [forceRender, setForceRender] = useState(0);
+
+  console.log('🔄 Main page render:', {
+    isAuthenticated: session.isAuthenticated,
+    hasSelectedServer: !!session.selectedServer,
+    selectedServerName: session.selectedServer?.name,
+    sessionObject: session,
+    forceRender
+  });
 
   // Clear any stale localStorage data on initial load
   useEffect(() => {
@@ -29,6 +38,16 @@ export default function Home() {
   const connectToSelectedServer = useCallback(async () => {
     const serverConnection = getSelectedServerConnection();
     const serverIdentifier = session.selectedServer?.machineIdentifier;
+    
+    console.log('🔄 connectToSelectedServer called', {
+      hasServerConnection: !!serverConnection,
+      serverName: serverConnection?.name,
+      isConnected,
+      isConnecting,
+      isConnectingToServer,
+      connectionAttempted,
+      serverIdentifier
+    });
     
     if (serverConnection && !isConnected && !isConnecting && !isConnectingToServer && 
         connectionAttempted !== serverIdentifier) {
@@ -48,6 +67,11 @@ export default function Home() {
   }, [session.selectedServer, getSelectedServerConnection, isConnected, isConnecting, isConnectingToServer, connectionAttempted, connect]);
 
   useEffect(() => {
+    console.log('🔄 Main page useEffect triggered', {
+      hasSelectedServer: !!session.selectedServer,
+      serverName: session.selectedServer?.name,
+      machineIdentifier: session.selectedServer?.machineIdentifier
+    });
     // Only attempt connection once per server selection
     if (session.selectedServer) {
       connectToSelectedServer();
@@ -127,14 +151,27 @@ export default function Home() {
           )}
 
           {/* Main Content */}
-          {!session.isAuthenticated || !session.selectedServer ? (
-            <PlexOAuthLogin 
-              isConnecting={isConnectingToServer}
-              onSuccess={() => {
-                // Server was selected, no action needed as state should update automatically
-              }}
-            />
-          ) : !isConnected && !isConnectingToServer ? (
+          {(() => {
+            const showOAuthLogin = !session.isAuthenticated || !session.selectedServer;
+            console.log('🔄 Render decision', {
+              isAuthenticated: session.isAuthenticated,
+              hasSelectedServer: !!session.selectedServer,
+              selectedServerName: session.selectedServer?.name,
+              showOAuthLogin
+            });
+            
+            if (showOAuthLogin) {
+              return (
+                <PlexOAuthLogin 
+                  isConnecting={isConnectingToServer}
+                  onSuccess={() => {
+                    console.log('🔄 onSuccess callback called, forcing re-render');
+                    setForceRender(prev => prev + 1);
+                  }}
+                />
+              );
+            } else if (!isConnected && !isConnectingToServer) {
+              return (
             <Card>
               <CardHeader>
                 <CardTitle>Connection Failed</CardTitle>
@@ -179,15 +216,23 @@ export default function Home() {
                 </div>
               </CardContent>
             </Card>
-          ) : showEpisodeConfirmation ? (
-            <EpisodeConfirmation
-              playlistPreviews={playlistPreviews}
-              onConfirm={handleConfirmEpisodes}
-              onCancel={handleCancelConfirmation}
-            />
-          ) : isConnected ? (
-            <PlaylistCreator onPlaylistsCreated={() => console.log('Playlists created!')} />
-          ) : null}
+              );
+            } else if (showEpisodeConfirmation) {
+              return (
+                <EpisodeConfirmation
+                  playlistPreviews={playlistPreviews}
+                  onConfirm={handleConfirmEpisodes}
+                  onCancel={handleCancelConfirmation}
+                />
+              );
+            } else if (isConnected) {
+              return (
+                <PlaylistCreator onPlaylistsCreated={() => console.log('Playlists created!')} />
+              );
+            } else {
+              return null;
+            }
+          })()}
 
           {/* Features */}
           <Card>

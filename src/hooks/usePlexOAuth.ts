@@ -30,9 +30,11 @@ export function usePlexOAuth() {
   }, [loadSavedSession]);
 
   const saveSession = useCallback((sessionData: PlexAuthSession) => {
+    console.log('🔄 saveSession called with:', sessionData);
     try {
       localStorage.setItem('plex-auth-session', JSON.stringify(sessionData));
       setSession(sessionData);
+      console.log('🔄 Session saved and state updated');
     } catch (error) {
       console.warn('Failed to save session:', error);
     }
@@ -104,12 +106,30 @@ export function usePlexOAuth() {
   }, [oauthManager, saveSession]);
 
   const selectServer = useCallback((server: PlexOAuthServer) => {
-    const updatedSession = {
-      ...session,
-      selectedServer: server,
-    };
-    saveSession(updatedSession);
-  }, [session, saveSession]);
+    console.log('🔄 selectServer called', {
+      serverName: server.name,
+      machineIdentifier: server.machineIdentifier,
+    });
+    
+    // Use functional update to avoid stale closure issues
+    setSession(currentSession => {
+      const updatedSession = {
+        ...currentSession,
+        selectedServer: server,
+      };
+      console.log('🔄 Updated session before save:', updatedSession);
+      
+      // Save to localStorage
+      try {
+        localStorage.setItem('plex-auth-session', JSON.stringify(updatedSession));
+        console.log('🔄 Session saved to localStorage');
+      } catch (error) {
+        console.warn('Failed to save session:', error);
+      }
+      
+      return updatedSession;
+    });
+  }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem('plex-auth-session');
