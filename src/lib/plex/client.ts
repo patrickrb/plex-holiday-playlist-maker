@@ -1,10 +1,23 @@
 import { PlexServer, PlexConnection, PlexLibrary, PlexEpisode, PlexPlaylist } from '@/types';
 
+// Create a global activity logger that can be used by PlexClient
+interface ActivityLogger {
+  addLogEntry?: (type: 'info' | 'success' | 'warning' | 'error', message: string, phase?: 'scanning' | 'creating' | 'adding', progress?: { current: number; total: number; percentage: number }) => void;
+  setOverallProgress?: (progress: { current: number; total: number; percentage: number } | null) => void;
+  setCurrentPhase?: (phase: 'scanning' | 'creating' | 'adding' | null) => void;
+}
+
+let globalActivityLogger: ActivityLogger = {};
+
 export class PlexClient {
   private server: PlexServer;
 
   constructor(server: PlexServer | PlexConnection) {
     this.server = server;
+  }
+
+  static setActivityLogger(logger: ActivityLogger) {
+    globalActivityLogger = logger;
   }
 
   private async getRealMachineIdentifier(): Promise<string> {
@@ -413,12 +426,24 @@ export class PlexClient {
 
       // Add episodes one by one since batch requests seem to be overwriting
       console.log(`📝 PlexClient: Adding ${episodes.length} episodes individually to avoid batch issues`);
+      globalActivityLogger.addLogEntry?.('info', `Adding ${episodes.length} episodes individually to playlist`, 'adding');
 
       let successCount = 0;
       for (let i = 0; i < episodes.length; i++) {
         const episode = episodes[i];
         const uri = uris[i];
         
+        const currentProgress = {
+          current: i + 1,
+          total: episodes.length,
+          percentage: Math.round(((i + 1) / episodes.length) * 100)
+        };
+        
+        globalActivityLogger.addLogEntry?.('info', 
+          `Adding episode ${i + 1}/${episodes.length}: ${episode.grandparentTitle} - ${episode.title}`, 
+          'adding', 
+          currentProgress
+        );
         console.log(`📦 PlexClient: Adding episode ${i + 1}/${episodes.length}: ${episode.grandparentTitle} - ${episode.title}`);
         
         try {
@@ -435,16 +460,32 @@ export class PlexClient {
             
             if (leafCountAdded > 0 || leafCountRequested > 0) {
               successCount++;
+              globalActivityLogger.addLogEntry?.('success', 
+                `Added "${episode.title}" from ${episode.grandparentTitle}`, 
+                'adding'
+              );
               console.log(`✅ PlexClient: Episode ${i + 1} added successfully (leafCountAdded: ${leafCountAdded}, leafCountRequested: ${leafCountRequested})`);
             } else {
+              globalActivityLogger.addLogEntry?.('warning', 
+                `May have failed to add "${episode.title}" from ${episode.grandparentTitle}`, 
+                'adding'
+              );
               console.warn(`⚠️ PlexClient: Episode ${i + 1} may not have been added (leafCountAdded: ${leafCountAdded}, leafCountRequested: ${leafCountRequested})`);
             }
           }
         } catch (error) {
+          globalActivityLogger.addLogEntry?.('error', 
+            `Failed to add "${episode.title}" from ${episode.grandparentTitle}: ${error}`, 
+            'adding'
+          );
           console.error(`❌ PlexClient: Failed to add episode ${i + 1}:`, error);
         }
       }
       
+      globalActivityLogger.addLogEntry?.('success', 
+        `Individual additions complete. ${successCount}/${episodes.length} episodes processed successfully`, 
+        'adding'
+      );
       console.log(`📊 PlexClient: Individual additions complete. ${successCount}/${episodes.length} episodes processed successfully.`);
 
       // Verify episodes were actually added by reading the playlist back
