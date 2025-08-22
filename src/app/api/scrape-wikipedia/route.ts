@@ -41,11 +41,11 @@ async function scrapeTitlesFromUrl(url: string): Promise<Set<string>> {
       }
     }
 
-    // Normalize titles (remove suffixes like "(TV special)", years, etc.)
+    // Normalize titles (remove suffixes like "(TV special)", "(film)", years, etc.)
     const normalized = new Set<string>();
     for (const title of titles) {
       const normalized_title = title
-        .replace(/\s*\((?:TV|television)[^)]*\)/g, '')
+        .replace(/\s*\((?:TV|television|film|movie)[^)]*\)/g, '')
         .replace(/\s*\(\d{4}\)$/g, '')
         .trim();
       

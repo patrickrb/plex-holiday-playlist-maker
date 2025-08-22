@@ -2,23 +2,51 @@ import { Holiday } from '@/types';
 
 export const WIKI_SOURCES: Record<Holiday, string[]> = {
   Halloween: [
+    // TV Sources
     'https://en.wikipedia.org/wiki/List_of_Halloween_television_specials',
     'https://en.wikipedia.org/wiki/Category:Halloween_television_specials',
     'https://en.wikipedia.org/wiki/Category:Halloween_television_episodes',
+    // Movie Sources
+    'https://en.wikipedia.org/wiki/List_of_films_set_around_Halloween',
+    'https://en.wikipedia.org/wiki/Category:American_films_about_Halloween',
+    'https://en.wikipedia.org/wiki/Category:Animated_films_about_Halloween',
+    'https://en.wikipedia.org/wiki/Category:Halloween_adventure_films',
+    'https://en.wikipedia.org/wiki/Category:British_films_about_Halloween',
+    'https://en.wikipedia.org/wiki/Category:Halloween_comedy_films',
+    'https://en.wikipedia.org/wiki/Category:Halloween_horror_films',
   ],
   Thanksgiving: [
+    // TV Sources
     'https://en.wikipedia.org/wiki/List_of_Thanksgiving_television_specials',
     'https://en.wikipedia.org/wiki/Category:Thanksgiving_television_specials',
+    // Movie Sources
+    'https://en.wikipedia.org/wiki/Category:Thanksgiving_in_films',
   ],
   Christmas: [
+    // TV Sources
     'https://en.wikipedia.org/wiki/List_of_Christmas_television_specials',
     'https://en.wikipedia.org/wiki/List_of_United_States_Christmas_television_episodes',
     'https://en.wikipedia.org/wiki/List_of_United_States_Christmas_television_specials',
     'https://en.wikipedia.org/wiki/Lists_of_Christmas_television_episodes',
+    // Movie Sources
+    'https://en.wikipedia.org/wiki/List_of_Christmas_films',
+    'https://en.wikipedia.org/wiki/Category:Christmas_adventure_films',
+    'https://en.wikipedia.org/wiki/Category:Animated_Christmas_films',
+    'https://en.wikipedia.org/wiki/Category:Children%27s_Christmas_films',
+    'https://en.wikipedia.org/wiki/Category:Christmas_comedy_films',
+    'https://en.wikipedia.org/wiki/Category:Christmas_comedy-drama_films',
+    'https://en.wikipedia.org/wiki/Category:Christmas_drama_films',
+    'https://en.wikipedia.org/wiki/Category:English-language_Christmas_films',
+    'https://en.wikipedia.org/wiki/Category:Christmas_romance_films',
+    'https://en.wikipedia.org/wiki/Category:Santa_Claus_in_film',
+    'https://en.wikipedia.org/wiki/Category:Christmas_television_films',
   ],
   "Valentine's": [
+    // TV Sources
     'https://en.wikipedia.org/wiki/List_of_Valentine%27s_Day_television_specials',
     'https://en.wikipedia.org/wiki/Category:Valentine%27s_Day_television_specials',
+    // Movie Sources
+    'https://en.wikipedia.org/wiki/Category:Valentine%27s_Day_in_films',
   ],
 };
 
