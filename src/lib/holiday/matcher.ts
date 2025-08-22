@@ -1,4 +1,4 @@
-import { Holiday, PlexEpisode, HolidayMatch } from '@/types';
+import { Holiday, PlexEpisode, PlexMovie, PlexMedia, HolidayMatch, isPlexEpisode } from '@/types';
 import { CURATED_KEYWORDS, EXCLUDE_PATTERNS } from './config';
 
 export class HolidayMatcher {
@@ -31,9 +31,9 @@ export class HolidayMatcher {
     }
   }
 
-  getMatchScore(episode: PlexEpisode, holiday: Holiday): number {
-    const title = episode.title || '';
-    const summary = episode.summary || '';
+  getMatchScore(media: PlexMedia, holiday: Holiday): number {
+    const title = media.title || '';
+    const summary = media.summary || '';
     
     // Check exclude patterns first - if any match, confidence is 0
     for (const pattern of this.excludePatterns) {
@@ -77,8 +77,8 @@ export class HolidayMatcher {
     return strongPatterns[holiday] || [];
   }
 
-  isMatch(episode: PlexEpisode, holiday: Holiday): boolean {
-    const score = this.getMatchScore(episode, holiday);
+  isMatch(media: PlexMedia, holiday: Holiday): boolean {
+    const score = this.getMatchScore(media, holiday);
     
     // Require a minimum confidence score
     const threshold = 8; // Adjust this to be more/less strict
@@ -86,11 +86,11 @@ export class HolidayMatcher {
     return score >= threshold;
   }
 
-  findMatches(episodes: PlexEpisode[]): HolidayMatch[] {
-    return this.findMatchesWithThreshold(episodes, 8);
+  findMatches(media: PlexMedia[]): HolidayMatch[] {
+    return this.findMatchesWithThreshold(media, 8);
   }
 
-  findMatchesWithThreshold(episodes: PlexEpisode[], threshold: number, selectedHolidays?: Set<Holiday>): HolidayMatch[] {
+  findMatchesWithThreshold(media: PlexMedia[], threshold: number, selectedHolidays?: Set<Holiday>): HolidayMatch[] {
     const results: HolidayMatch[] = [];
     
     // Use selected holidays if provided, otherwise use all holidays
@@ -98,25 +98,38 @@ export class HolidayMatcher {
       ? Array.from(selectedHolidays)
       : Object.keys(CURATED_KEYWORDS) as Holiday[];
     
-    console.log(`🔍 HolidayMatcher: Analyzing episodes for ${holidaysToCheck.length} holidays: ${holidaysToCheck.join(', ')}`);
+    console.log(`🔍 HolidayMatcher: Analyzing ${media.length} media items for ${holidaysToCheck.length} holidays: ${holidaysToCheck.join(', ')}`);
     
     for (const holiday of holidaysToCheck) {
       const matchedEpisodes: PlexEpisode[] = [];
+      const matchedMovies: PlexMovie[] = [];
       
-      for (const episode of episodes) {
-        const score = this.getMatchScore(episode, holiday);
+      for (const item of media) {
+        const score = this.getMatchScore(item, holiday);
         if (score >= threshold) {
-          console.log(`✅ ${holiday} match (score: ${score}): ${episode.grandparentTitle} - ${episode.title}`);
-          matchedEpisodes.push(episode);
+          const title = isPlexEpisode(item) 
+            ? `${item.grandparentTitle} - ${item.title}`
+            : item.title;
+          console.log(`✅ ${holiday} match (score: ${score}): ${title}`);
+          
+          if (isPlexEpisode(item)) {
+            matchedEpisodes.push(item);
+          } else {
+            matchedMovies.push(item);
+          }
         } else if (score > 0) {
-          console.log(`⚠️ ${holiday} weak match (score: ${score}): ${episode.grandparentTitle} - ${episode.title}`);
+          const title = isPlexEpisode(item) 
+            ? `${item.grandparentTitle} - ${item.title}`
+            : item.title;
+          console.log(`⚠️ ${holiday} weak match (score: ${score}): ${title}`);
         }
       }
       
-      if (matchedEpisodes.length > 0) {
+      if (matchedEpisodes.length > 0 || matchedMovies.length > 0) {
         results.push({
           holiday,
-          episodes: matchedEpisodes
+          episodes: matchedEpisodes,
+          movies: matchedMovies
         });
       }
     }
@@ -124,7 +137,7 @@ export class HolidayMatcher {
     return results;
   }
 
-  getMatchSummary(episodes: PlexEpisode[]): Record<Holiday, number> {
+  getMatchSummary(media: PlexMedia[]): Record<Holiday, number> {
     const summary: Record<Holiday, number> = {
       Halloween: 0,
       Thanksgiving: 0,
@@ -133,7 +146,7 @@ export class HolidayMatcher {
     };
 
     for (const holiday of Object.keys(CURATED_KEYWORDS) as Holiday[]) {
-      summary[holiday] = episodes.filter(ep => this.isMatch(ep, holiday)).length;
+      summary[holiday] = media.filter(item => this.isMatch(item, holiday)).length;
     }
 
     return summary;

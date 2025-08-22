@@ -111,5 +111,6 @@ export const EXCLUDE_PATTERNS = [
 export const PLAYLIST_PREFIX = 'Holiday – ';
 
 export const DEFAULT_TV_LIBRARY = 'TV Shows';
+export const DEFAULT_MOVIE_LIBRARY = 'Movies';
 
 export const SCRAPE_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds

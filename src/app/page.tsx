@@ -3,18 +3,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { PlexOAuthLogin } from '@/components/plex/PlexOAuthLogin';
 import { PlaylistCreator } from '@/components/playlist/PlaylistCreator';
-import { EpisodeConfirmation } from '@/components/playlist/EpisodeConfirmation';
+import { MediaConfirmation } from '@/components/playlist/EpisodeConfirmation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { usePlex } from '@/contexts/PlexContext';
 import { usePlexOAuth } from '@/contexts/PlexOAuthContext';
-import { PlaylistPreview, PlexEpisode } from '@/types';
+import { PlaylistPreview, PlexMedia } from '@/types';
 
 export default function Home() {
   const { connect, isConnected, disconnect, isLoading: isConnecting, error: connectionError } = usePlex();
   const { session, getSelectedServerConnection } = usePlexOAuth();
-  const [showEpisodeConfirmation, setShowEpisodeConfirmation] = useState(false);
+  const [showMediaConfirmation, setShowMediaConfirmation] = useState(false);
   const [playlistPreviews, setPlaylistPreviews] = useState<PlaylistPreview[]>([]);
   const [isConnectingToServer, setIsConnectingToServer] = useState(false);
   const [connectionAttempted, setConnectionAttempted] = useState<string | null>(null);
@@ -62,14 +62,14 @@ export default function Home() {
   }, [session.selectedServer?.machineIdentifier, connectionAttempted]);
 
 
-  const handleConfirmEpisodes = async (selectedEpisodes: Map<string, PlexEpisode[]>) => {
-    // TODO: Implement actual playlist creation with selected episodes
-    console.log('Creating playlists with:', selectedEpisodes);
-    setShowEpisodeConfirmation(false);
+  const handleConfirmMedia = async (selectedMedia: Map<string, PlexMedia[]>) => {
+    // TODO: Implement actual playlist creation with selected media
+    console.log('Creating playlists with:', selectedMedia);
+    setShowMediaConfirmation(false);
   };
 
   const handleCancelConfirmation = () => {
-    setShowEpisodeConfirmation(false);
+    setShowMediaConfirmation(false);
     setPlaylistPreviews([]);
   };
 
@@ -83,7 +83,7 @@ export default function Home() {
               Plex Holiday Playlist Maker
             </h1>
             <p className="text-xl text-gray-600">
-              Automatically create holiday-themed playlists from your Plex TV library
+              Automatically create holiday-themed playlists from your Plex TV shows and movies
             </p>
           </div>
 
@@ -179,10 +179,10 @@ export default function Home() {
                 </div>
               </CardContent>
             </Card>
-          ) : showEpisodeConfirmation ? (
-            <EpisodeConfirmation
+          ) : showMediaConfirmation ? (
+            <MediaConfirmation
               playlistPreviews={playlistPreviews}
-              onConfirm={handleConfirmEpisodes}
+              onConfirm={handleConfirmMedia}
               onCancel={handleCancelConfirmation}
             />
           ) : isConnected ? (
@@ -240,8 +240,8 @@ export default function Home() {
                 <ol className="list-decimal list-inside space-y-2 text-sm">
                   <li>Sign in with your Plex account</li>
                   <li>Select a Plex server from your available servers</li>
-                  <li>Choose your TV Shows library to scan</li>
-                  <li>Review the found episodes and confirm which ones to include</li>
+                  <li>Choose your TV Shows and/or Movie libraries to scan</li>
+                  <li>Review the found episodes and movies and confirm which ones to include</li>
                   <li>Create your holiday playlists!</li>
                 </ol>
               </CardContent>
