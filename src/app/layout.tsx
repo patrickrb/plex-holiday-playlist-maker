@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { PlexProvider } from "@/contexts/PlexContext";
+import { PlexOAuthProvider } from "@/contexts/PlexOAuthContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,9 +29,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <PlexProvider>
-          {children}
-        </PlexProvider>
+        <PlexOAuthProvider>
+          <PlexProvider>
+            {children}
+          </PlexProvider>
+        </PlexOAuthProvider>
       </body>
     </html>
   );

@@ -1,8 +1,26 @@
-import { useState, useCallback, useEffect } from 'react';
+'use client';
+
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { PlexOAuthManager } from '@/lib/plex/oauth';
 import { PlexAuthSession, PlexOAuthServer } from '@/types/oauth';
 
-export function usePlexOAuth() {
+interface PlexOAuthContextType {
+  session: PlexAuthSession;
+  isLoading: boolean;
+  error: string | null;
+  initiateLogin: () => Promise<string | null>;
+  pollForToken: () => Promise<boolean>;
+  selectServer: (server: PlexOAuthServer) => void;
+  logout: () => void;
+  getServerUrl: (server: PlexOAuthServer) => string;
+  getSelectedServerConnection: () => { url: string; token: string; name: string } | null;
+  loadSavedSession: () => void;
+  refreshSession: () => Promise<boolean>;
+}
+
+const PlexOAuthContext = createContext<PlexOAuthContextType | undefined>(undefined);
+
+export function PlexOAuthProvider({ children }: { children: React.ReactNode }) {
   const [oauthManager] = useState(() => new PlexOAuthManager());
   const [session, setSession] = useState<PlexAuthSession>({
     isAuthenticated: false,
@@ -30,11 +48,9 @@ export function usePlexOAuth() {
   }, [loadSavedSession]);
 
   const saveSession = useCallback((sessionData: PlexAuthSession) => {
-    console.log('🔄 saveSession called with:', sessionData);
     try {
       localStorage.setItem('plex-auth-session', JSON.stringify(sessionData));
       setSession(sessionData);
-      console.log('🔄 Session saved and state updated');
     } catch (error) {
       console.warn('Failed to save session:', error);
     }
@@ -106,30 +122,12 @@ export function usePlexOAuth() {
   }, [oauthManager, saveSession]);
 
   const selectServer = useCallback((server: PlexOAuthServer) => {
-    console.log('🔄 selectServer called', {
-      serverName: server.name,
-      machineIdentifier: server.machineIdentifier,
-    });
-    
-    // Use functional update to avoid stale closure issues
-    setSession(currentSession => {
-      const updatedSession = {
-        ...currentSession,
-        selectedServer: server,
-      };
-      console.log('🔄 Updated session before save:', updatedSession);
-      
-      // Save to localStorage
-      try {
-        localStorage.setItem('plex-auth-session', JSON.stringify(updatedSession));
-        console.log('🔄 Session saved to localStorage');
-      } catch (error) {
-        console.warn('Failed to save session:', error);
-      }
-      
-      return updatedSession;
-    });
-  }, []);
+    const updatedSession = {
+      ...session,
+      selectedServer: server,
+    };
+    saveSession(updatedSession);
+  }, [session, saveSession]);
 
   const logout = useCallback(() => {
     localStorage.removeItem('plex-auth-session');
@@ -211,7 +209,7 @@ export function usePlexOAuth() {
     }
   }, [session, oauthManager, saveSession, logout]);
 
-  return {
+  const value: PlexOAuthContextType = {
     session,
     isLoading,
     error,
@@ -224,4 +222,18 @@ export function usePlexOAuth() {
     loadSavedSession,
     refreshSession,
   };
+
+  return (
+    <PlexOAuthContext.Provider value={value}>
+      {children}
+    </PlexOAuthContext.Provider>
+  );
+}
+
+export function usePlexOAuth() {
+  const context = useContext(PlexOAuthContext);
+  if (context === undefined) {
+    throw new Error('usePlexOAuth must be used within a PlexOAuthProvider');
+  }
+  return context;
 }

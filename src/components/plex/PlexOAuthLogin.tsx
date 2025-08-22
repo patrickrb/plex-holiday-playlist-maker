@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { usePlexOAuth } from '@/hooks/usePlexOAuth';
+import { usePlexOAuth } from '@/contexts/PlexOAuthContext';
 import { PlexOAuthServer } from '@/types/oauth';
 
 interface PlexOAuthLoginProps {
