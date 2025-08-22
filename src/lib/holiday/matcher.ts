@@ -49,6 +49,7 @@ export class HolidayMatcher {
       for (const indicator of strongIndicators) {
         if (new RegExp(indicator, 'i').test(title)) {
           // If title contains strong indicators of another holiday, exclude it
+          console.log(`🚫 Cross-holiday exclusion: "${title}" excluded from ${holiday} due to ${otherHoliday} indicator: ${indicator}`);
           return 0;
         }
       }
@@ -83,7 +84,7 @@ export class HolidayMatcher {
     const strongPatterns: Record<Holiday, string[]> = {
       Halloween: ['\\bHallowe?en\\b', 'Treehouse of Horror', 'October 31', 'All Hallows'],
       Thanksgiving: ['\\bThanksgiving\\b', '\\bFriendsgiving\\b', 'Turkey Day'],
-      Christmas: ['\\bChristmas\\b', '\\bX[- ]?mas\\b', 'December 25', 'Santa', 'Ho Ho Ho'],
+      Christmas: ['\\bChristmas\\b', '\\bX[- ]?mas\\b', 'December 25', 'Santa', 'Ho Ho Ho', '\\bElf\\b', '\\bReindeer\\b', '\\bNorth Pole\\b'],
       "Valentine's": ["\\bValentine'?s?\\b", 'February 14', 'Cupid']
     };
     return strongPatterns[holiday] || [];
