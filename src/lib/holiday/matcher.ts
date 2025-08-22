@@ -90,10 +90,17 @@ export class HolidayMatcher {
     return this.findMatchesWithThreshold(episodes, 8);
   }
 
-  findMatchesWithThreshold(episodes: PlexEpisode[], threshold: number): HolidayMatch[] {
+  findMatchesWithThreshold(episodes: PlexEpisode[], threshold: number, selectedHolidays?: Set<Holiday>): HolidayMatch[] {
     const results: HolidayMatch[] = [];
     
-    for (const holiday of Object.keys(CURATED_KEYWORDS) as Holiday[]) {
+    // Use selected holidays if provided, otherwise use all holidays
+    const holidaysToCheck = selectedHolidays 
+      ? Array.from(selectedHolidays)
+      : Object.keys(CURATED_KEYWORDS) as Holiday[];
+    
+    console.log(`🔍 HolidayMatcher: Analyzing episodes for ${holidaysToCheck.length} holidays: ${holidaysToCheck.join(', ')}`);
+    
+    for (const holiday of holidaysToCheck) {
       const matchedEpisodes: PlexEpisode[] = [];
       
       for (const episode of episodes) {

@@ -10,7 +10,7 @@ export function useHolidayPlaylists() {
   const [error, setError] = useState<string | null>(null);
   const [scrapedTitles, setScrapedTitles] = useState<Map<Holiday, string[]>>(new Map());
 
-  const scrapeWikipediaTitles = useCallback(async (skipScrape = false) => {
+  const scrapeWikipediaTitles = useCallback(async (skipScrape = false, selectedHolidays?: Set<Holiday>) => {
     if (skipScrape) {
       console.log('⏭️ Skipping Wikipedia scraping');
       setScrapedTitles(new Map());
@@ -23,7 +23,7 @@ export function useHolidayPlaylists() {
     try {
       console.log('🌐 Starting Wikipedia scraping...');
       const scraper = new WikipediaScraper();
-      const titles = await scraper.scrapeTitles();
+      const titles = await scraper.scrapeTitles(false, selectedHolidays);
       
       console.log('📝 Wikipedia scraping complete! Results:');
       titles.forEach((titleList, holiday) => {
@@ -48,7 +48,8 @@ export function useHolidayPlaylists() {
   const analyzeEpisodes = useCallback(async (
     episodes: PlexEpisode[],
     useWikipedia = true,
-    confidenceThreshold = 8
+    confidenceThreshold = 8,
+    selectedHolidays?: Set<Holiday>
   ): Promise<HolidayMatch[]> => {
     setIsAnalyzing(true);
     setError(null);
@@ -56,9 +57,10 @@ export function useHolidayPlaylists() {
     try {
       console.log(`🔍 useHolidayPlaylists: Starting analysis of ${episodes.length} episodes`);
       console.log(`🌐 Wikipedia scraping: ${useWikipedia ? 'Enabled' : 'Disabled'}`);
+      console.log(`🎯 Selected holidays: ${selectedHolidays ? Array.from(selectedHolidays).join(', ') : 'All holidays'}`);
       
       // Get Wikipedia titles if requested
-      const wikiTitles = useWikipedia ? await scrapeWikipediaTitles() : new Map();
+      const wikiTitles = useWikipedia ? await scrapeWikipediaTitles(false, selectedHolidays) : new Map();
       
       if (useWikipedia && wikiTitles.size > 0) {
         console.log('📝 Wikipedia titles found:');
@@ -73,7 +75,7 @@ export function useHolidayPlaylists() {
       
       // Find matches with confidence threshold
       console.log(`🔍 Starting pattern matching on episodes (threshold: ${confidenceThreshold})...`);
-      const matches = matcher.findMatchesWithThreshold(episodes, confidenceThreshold);
+      const matches = matcher.findMatchesWithThreshold(episodes, confidenceThreshold, selectedHolidays);
       
       console.log('✅ Pattern matching complete! Results:');
       matches.forEach(match => {
@@ -104,14 +106,10 @@ export function useHolidayPlaylists() {
     selectedHolidays?: Set<Holiday>,
     confidenceThreshold = 8
   ): Promise<PlaylistPreview[]> => {
-    const matches = await analyzeEpisodes(episodes, useWikipedia, confidenceThreshold);
+    const matches = await analyzeEpisodes(episodes, useWikipedia, confidenceThreshold, selectedHolidays);
     
-    // Filter matches to only include selected holidays
-    const filteredMatches = selectedHolidays 
-      ? matches.filter(match => selectedHolidays.has(match.holiday))
-      : matches;
-    
-    return filteredMatches.map(match => {
+    // No need to filter matches since the matcher already only processed selected holidays
+    return matches.map(match => {
       const playlistName = `${PLAYLIST_PREFIX}${match.holiday}`;
       const existingEpisodes = existingPlaylists.get(playlistName) || [];
       const existingGuids = new Set(existingEpisodes.map(ep => ep.guid));
