@@ -6,7 +6,22 @@ export class HolidayMatcher {
   private excludePatterns: RegExp[] = [];
 
   constructor(additionalTitles: Map<Holiday, string[]> = new Map()) {
+    console.log('🎯 HolidayMatcher: Initializing with additional Wikipedia titles...');
     this.compilePatterns(additionalTitles);
+    
+    // Log what we have for debugging
+    let totalWikipediaTitles = 0;
+    additionalTitles.forEach((titles, holiday) => {
+      totalWikipediaTitles += titles.length;
+      console.log(`  📝 ${holiday}: ${titles.length} Wikipedia titles added`);
+    });
+    
+    if (totalWikipediaTitles === 0) {
+      console.warn('⚠️ HolidayMatcher: No Wikipedia titles provided - using curated keywords only');
+      console.warn('💡 This may result in fewer matches, especially for movies');
+    } else {
+      console.log(`✅ HolidayMatcher: ${totalWikipediaTitles} total Wikipedia titles integrated with curated patterns`);
+    }
   }
 
   private compilePatterns(additionalTitles: Map<Holiday, string[]>) {

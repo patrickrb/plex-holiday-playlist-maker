@@ -485,9 +485,18 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
                 onCheckedChange={(checked) => setUseWikipedia(!!checked)}
               />
               <Label htmlFor="useWikipedia">
-                Use Wikipedia scraping for better content detection
+                Use Wikipedia scraping for enhanced content detection
               </Label>
             </div>
+            {useWikipedia && (
+              <div className="text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
+                <p className="font-medium">📚 Enhanced Detection Active</p>
+                <p>Wikipedia scraping will supplement curated keywords with comprehensive movie and TV show databases from Wikipedia, significantly improving holiday content detection.</p>
+                <p className="mt-1 text-xs text-blue-500">
+                  Note: If network restrictions prevent Wikipedia access, the system will automatically fall back to curated keyword matching.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="confidence">
