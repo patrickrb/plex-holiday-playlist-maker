@@ -42,6 +42,18 @@ export class HolidayMatcher {
       }
     }
 
+    // Prevent cross-holiday matching by checking for other holiday keywords
+    const otherHolidays = (Object.keys(CURATED_KEYWORDS) as Holiday[]).filter(h => h !== holiday);
+    for (const otherHoliday of otherHolidays) {
+      const strongIndicators = this.getStrongIndicators(otherHoliday);
+      for (const indicator of strongIndicators) {
+        if (new RegExp(indicator, 'i').test(title)) {
+          // If title contains strong indicators of another holiday, exclude it
+          return 0;
+        }
+      }
+    }
+
     let score = 0;
     const patterns = this.includePatterns.get(holiday) || [];
     
