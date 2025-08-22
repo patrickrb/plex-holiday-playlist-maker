@@ -115,23 +115,46 @@ export function useHolidayPlaylists() {
   ): Promise<PlaylistPreview[]> => {
     const matches = await analyzeMedia(media, useWikipedia, confidenceThreshold, selectedHolidays);
     
-    // No need to filter matches since the matcher already only processed selected holidays
-    return matches.map(match => {
-      const playlistName = `${PLAYLIST_PREFIX}${match.holiday}`;
-      const existingMedia = existingPlaylists.get(playlistName) || [];
-      const existingGuids = new Set(existingMedia.map(item => item.guid));
-      const allMatchedMedia = [...match.episodes, ...match.movies];
-      const newMedia = allMatchedMedia.filter(item => !existingGuids.has(item.guid));
+    const previews: PlaylistPreview[] = [];
+    
+    // Create separate playlists for TV shows and movies
+    for (const match of matches) {
+      // Create TV playlist if there are episodes
+      if (match.episodes.length > 0) {
+        const tvPlaylistName = `${PLAYLIST_PREFIX}${match.holiday} TV`;
+        const existingTvMedia = existingPlaylists.get(tvPlaylistName) || [];
+        const existingTvGuids = new Set(existingTvMedia.map(item => item.guid));
+        const newTvMedia = match.episodes.filter(ep => !existingTvGuids.has(ep.guid));
 
-      return {
-        holiday: match.holiday,
-        name: playlistName,
-        episodes: match.episodes,
-        movies: match.movies,
-        existingCount: existingMedia.length,
-        newCount: newMedia.length,
-      };
-    });
+        previews.push({
+          holiday: match.holiday,
+          name: tvPlaylistName,
+          episodes: match.episodes,
+          movies: [], // TV playlist only contains episodes
+          existingCount: existingTvMedia.length,
+          newCount: newTvMedia.length,
+        });
+      }
+
+      // Create Movie playlist if there are movies
+      if (match.movies.length > 0) {
+        const moviePlaylistName = `${PLAYLIST_PREFIX}${match.holiday} Movies`;
+        const existingMovieMedia = existingPlaylists.get(moviePlaylistName) || [];
+        const existingMovieGuids = new Set(existingMovieMedia.map(item => item.guid));
+        const newMovieMedia = match.movies.filter(movie => !existingMovieGuids.has(movie.guid));
+
+        previews.push({
+          holiday: match.holiday,
+          name: moviePlaylistName,
+          episodes: [], // Movie playlist only contains movies
+          movies: match.movies,
+          existingCount: existingMovieMedia.length,
+          newCount: newMovieMedia.length,
+        });
+      }
+    }
+    
+    return previews;
   }, [analyzeMedia]);
 
   const getMatchSummary = useCallback((media: PlexMedia[]): Record<Holiday, number> => {
