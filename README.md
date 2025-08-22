@@ -20,6 +20,16 @@ A modern web application that automatically creates holiday-themed playlists fro
 
 ## Getting Started
 
+### Option 1: Deploy to Vercel (Recommended)
+
+Deploy your own instance to Vercel with one click:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/patrickrb/plex-holiday-playlist-maker)
+
+After deployment, your app will be available at your custom Vercel URL and ready to use with your Plex server.
+
+### Option 2: Local Development
+
 1. **Clone and install dependencies:**
    ```bash
    git clone <repository-url>
