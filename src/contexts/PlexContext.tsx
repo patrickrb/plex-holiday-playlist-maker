@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { PlexClient } from '@/lib/plex/client';
-import { PlexServer, PlexConnection, PlexLibrary, PlexEpisode, PlexPlaylist } from '@/types';
+import { PlexServer, PlexConnection, PlexLibrary, PlexEpisode, PlexMovie, PlexMedia, PlexPlaylist } from '@/types';
 import { ActivityLogEntry } from '@/components/ui/ActivityLog';
 
 interface PlexContextType {
@@ -14,10 +14,11 @@ interface PlexContextType {
   disconnect: () => void;
   getLibraries: () => Promise<PlexLibrary[]>;
   getEpisodes: (libraryKey: string) => Promise<PlexEpisode[]>;
+  getMovies: (libraryKey: string) => Promise<PlexMovie[]>;
   getPlaylists: () => Promise<PlexPlaylist[]>;
-  getPlaylistItems: (playlistKey: string) => Promise<PlexEpisode[]>;
-  createPlaylist: (name: string, episodes: PlexEpisode[]) => Promise<boolean>;
-  updatePlaylist: (playlistKey: string, newEpisodes: PlexEpisode[], existingEpisodes: PlexEpisode[]) => Promise<boolean>;
+  getPlaylistItems: (playlistKey: string) => Promise<PlexMedia[]>;
+  createPlaylist: (name: string, media: PlexMedia[]) => Promise<boolean>;
+  updatePlaylist: (playlistKey: string, newMedia: PlexMedia[], existingMedia: PlexMedia[]) => Promise<boolean>;
   getServerInfo: () => Promise<{ name: string; version: string } | null>;
   restoreConnection: () => Promise<void>;
   // Activity logging
@@ -101,6 +102,13 @@ export function PlexProvider({ children }: { children: React.ReactNode }) {
     return client.getEpisodes(libraryKey);
   }, [client, isConnected]);
 
+  const getMovies = useCallback(async (libraryKey: string): Promise<PlexMovie[]> => {
+    if (!client || !isConnected) {
+      throw new Error('Not connected to Plex server');
+    }
+    return client.getMovies(libraryKey);
+  }, [client, isConnected]);
+
   const getPlaylists = useCallback(async (): Promise<PlexPlaylist[]> => {
     if (!client || !isConnected) {
       throw new Error('Not connected to Plex server');
@@ -108,29 +116,29 @@ export function PlexProvider({ children }: { children: React.ReactNode }) {
     return client.getPlaylists();
   }, [client, isConnected]);
 
-  const getPlaylistItems = useCallback(async (playlistKey: string): Promise<PlexEpisode[]> => {
+  const getPlaylistItems = useCallback(async (playlistKey: string): Promise<PlexMedia[]> => {
     if (!client || !isConnected) {
       throw new Error('Not connected to Plex server');
     }
     return client.getPlaylistItems(playlistKey);
   }, [client, isConnected]);
 
-  const createPlaylist = useCallback(async (name: string, episodes: PlexEpisode[]): Promise<boolean> => {
+  const createPlaylist = useCallback(async (name: string, media: PlexMedia[]): Promise<boolean> => {
     if (!client || !isConnected) {
       throw new Error('Not connected to Plex server');
     }
-    return client.createPlaylist(name, episodes);
+    return client.createPlaylist(name, media);
   }, [client, isConnected]);
 
   const updatePlaylist = useCallback(async (
     playlistKey: string, 
-    newEpisodes: PlexEpisode[], 
-    existingEpisodes: PlexEpisode[]
+    newMedia: PlexMedia[], 
+    existingMedia: PlexMedia[]
   ): Promise<boolean> => {
     if (!client || !isConnected) {
       throw new Error('Not connected to Plex server');
     }
-    return client.updatePlaylist(playlistKey, newEpisodes, existingEpisodes);
+    return client.updatePlaylist(playlistKey, newMedia, existingMedia);
   }, [client, isConnected]);
 
   const getServerInfo = useCallback(async () => {
@@ -187,6 +195,7 @@ export function PlexProvider({ children }: { children: React.ReactNode }) {
     disconnect,
     getLibraries,
     getEpisodes,
+    getMovies,
     getPlaylists,
     getPlaylistItems,
     createPlaylist,

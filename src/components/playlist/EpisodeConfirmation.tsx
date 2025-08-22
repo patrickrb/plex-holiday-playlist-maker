@@ -6,35 +6,35 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlaylistPreview, PlexEpisode } from '@/types';
+import { PlaylistPreview, PlexMedia, isPlexEpisode } from '@/types';
 
-interface EpisodeConfirmationProps {
+interface MediaConfirmationProps {
   playlistPreviews: PlaylistPreview[];
-  onConfirm: (selectedEpisodes: Map<string, PlexEpisode[]>) => void;
+  onConfirm: (selectedMedia: Map<string, PlexMedia[]>) => void;
   onCancel: () => void;
 }
 
-export function EpisodeConfirmation({ 
+export function MediaConfirmation({ 
   playlistPreviews, 
   onConfirm, 
   onCancel 
-}: EpisodeConfirmationProps) {
-  const [selectedEpisodes, setSelectedEpisodes] = useState<Map<string, Set<string>>>(
+}: MediaConfirmationProps) {
+  const [selectedMedia, setSelectedMedia] = useState<Map<string, Set<string>>>(
     new Map(playlistPreviews.map(preview => [
       preview.holiday,
-      new Set(preview.episodes.map(ep => ep.guid))
+      new Set([...preview.episodes, ...preview.movies].map(item => item.guid))
     ]))
   );
 
-  const toggleEpisode = (holiday: string, episodeGuid: string) => {
-    setSelectedEpisodes(prev => {
+  const toggleMedia = (holiday: string, mediaGuid: string) => {
+    setSelectedMedia(prev => {
       const newMap = new Map(prev);
       const holidaySet = new Set(newMap.get(holiday) || []);
       
-      if (holidaySet.has(episodeGuid)) {
-        holidaySet.delete(episodeGuid);
+      if (holidaySet.has(mediaGuid)) {
+        holidaySet.delete(mediaGuid);
       } else {
-        holidaySet.add(episodeGuid);
+        holidaySet.add(mediaGuid);
       }
       
       newMap.set(holiday, holidaySet);
@@ -42,18 +42,18 @@ export function EpisodeConfirmation({
     });
   };
 
-  const toggleAllForHoliday = (holiday: string, episodes: PlexEpisode[]) => {
-    setSelectedEpisodes(prev => {
+  const toggleAllForHoliday = (holiday: string, allMedia: PlexMedia[]) => {
+    setSelectedMedia(prev => {
       const newMap = new Map(prev);
       const holidaySet = new Set(newMap.get(holiday) || []);
-      const allSelected = episodes.every(ep => holidaySet.has(ep.guid));
+      const allSelected = allMedia.every(item => holidaySet.has(item.guid));
       
       if (allSelected) {
         // Deselect all
         newMap.set(holiday, new Set());
       } else {
         // Select all
-        newMap.set(holiday, new Set(episodes.map(ep => ep.guid)));
+        newMap.set(holiday, new Set(allMedia.map(item => item.guid)));
       }
       
       return newMap;
@@ -61,25 +61,30 @@ export function EpisodeConfirmation({
   };
 
   const handleConfirm = () => {
-    const result = new Map<string, PlexEpisode[]>();
+    const result = new Map<string, PlexMedia[]>();
     
     for (const preview of playlistPreviews) {
-      const selected = selectedEpisodes.get(preview.holiday) || new Set();
-      const filteredEpisodes = preview.episodes.filter(ep => selected.has(ep.guid));
-      if (filteredEpisodes.length > 0) {
-        result.set(preview.holiday, filteredEpisodes);
+      const selected = selectedMedia.get(preview.holiday) || new Set();
+      const allMedia = [...preview.episodes, ...preview.movies];
+      const filteredMedia = allMedia.filter(item => selected.has(item.guid));
+      if (filteredMedia.length > 0) {
+        result.set(preview.holiday, filteredMedia);
       }
     }
     
     onConfirm(result);
   };
 
-  const formatEpisode = (episode: PlexEpisode) => {
-    return `${episode.grandparentTitle} – S${episode.seasonNumber.toString().padStart(2, '0')}E${episode.index.toString().padStart(2, '0')} – ${episode.title}`;
+  const formatMedia = (media: PlexMedia) => {
+    if (isPlexEpisode(media)) {
+      return `${media.grandparentTitle} – S${media.seasonNumber.toString().padStart(2, '0')}E${media.index.toString().padStart(2, '0')} – ${media.title}`;
+    } else {
+      return `${media.title}${media.year ? ` (${media.year})` : ''}`;
+    }
   };
 
   const getTotalSelected = () => {
-    return Array.from(selectedEpisodes.values())
+    return Array.from(selectedMedia.values())
       .reduce((total, set) => total + set.size, 0);
   };
 
@@ -87,16 +92,16 @@ export function EpisodeConfirmation({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Confirm Holiday Episodes</CardTitle>
+          <CardTitle>Confirm Holiday Media</CardTitle>
           <CardDescription>
-            Review and select which episodes to include in your holiday playlists.
-            Uncheck any episodes you don&apos;t want to include.
+            Review and select which episodes and movies to include in your holiday playlists.
+            Uncheck any items you don&apos;t want to include.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex justify-between items-center mb-4">
             <Badge variant="outline">
-              {getTotalSelected()} episodes selected
+              {getTotalSelected()} items selected
             </Badge>
             <div className="flex gap-2">
               <Button variant="outline" onClick={onCancel}>
@@ -114,9 +119,10 @@ export function EpisodeConfirmation({
       </Card>
 
       {playlistPreviews.map((preview) => {
-        const holidaySelected = selectedEpisodes.get(preview.holiday) || new Set();
-        const allSelected = preview.episodes.every(ep => holidaySelected.has(ep.guid));
-        const someSelected = preview.episodes.some(ep => holidaySelected.has(ep.guid));
+        const holidaySelected = selectedMedia.get(preview.holiday) || new Set();
+        const allMedia = [...preview.episodes, ...preview.movies];
+        const allSelected = allMedia.every(item => holidaySelected.has(item.guid));
+        const someSelected = allMedia.some(item => holidaySelected.has(item.guid));
 
         return (
           <Card key={preview.holiday}>
@@ -130,21 +136,21 @@ export function EpisodeConfirmation({
                         (ref as HTMLInputElement).indeterminate = someSelected && !allSelected;
                       }
                     }}
-                    onCheckedChange={() => toggleAllForHoliday(preview.holiday, preview.episodes)}
+                    onCheckedChange={() => toggleAllForHoliday(preview.holiday, allMedia)}
                   />
                   {preview.name}
                 </CardTitle>
                 <Badge variant={holidaySelected.size > 0 ? "default" : "secondary"}>
-                  {holidaySelected.size}/{preview.episodes.length} selected
+                  {holidaySelected.size}/{allMedia.length} selected
                 </Badge>
               </div>
               <CardDescription>
                 {(preview.existingCount || 0) > 0 && (
                   <span className="text-blue-600">
-                    {preview.existingCount} episodes already in playlist. 
+                    {preview.existingCount} items already in playlist. 
                   </span>
                 )}{' '}
-                Found {preview.episodes.length} total episodes for {preview.holiday}.
+                Found {preview.episodes.length} episodes and {preview.movies.length} movies for {preview.holiday}.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -153,33 +159,39 @@ export function EpisodeConfirmation({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">Select</TableHead>
-                      <TableHead>Episode</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead className="w-16">Type</TableHead>
                       <TableHead className="w-20">Year</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {preview.episodes.map((episode) => (
-                      <TableRow key={episode.guid}>
+                    {allMedia.map((item) => (
+                      <TableRow key={item.guid}>
                         <TableCell>
                           <Checkbox
-                            checked={holidaySelected.has(episode.guid)}
-                            onCheckedChange={() => toggleEpisode(preview.holiday, episode.guid)}
+                            checked={holidaySelected.has(item.guid)}
+                            onCheckedChange={() => toggleMedia(preview.holiday, item.guid)}
                           />
                         </TableCell>
                         <TableCell>
                           <div>
                             <div className="font-medium">
-                              {formatEpisode(episode)}
+                              {formatMedia(item)}
                             </div>
-                            {episode.summary && (
+                            {item.summary && (
                               <div className="text-sm text-gray-600 mt-1 line-clamp-2">
-                                {episode.summary}
+                                {item.summary}
                               </div>
                             )}
                           </div>
                         </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {isPlexEpisode(item) ? '📺 TV' : '🎬 Movie'}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-sm text-gray-500">
-                          {episode.year || 'N/A'}
+                          {item.year || 'N/A'}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -197,7 +209,7 @@ export function EpisodeConfirmation({
           disabled={getTotalSelected() === 0}
           size="lg"
         >
-          Create {getTotalSelected()} Selected Episodes in Playlists
+          Create {getTotalSelected()} Selected Items in Playlists
         </Button>
       </div>
     </div>

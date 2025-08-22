@@ -12,8 +12,8 @@ import { usePlex } from '@/contexts/PlexContext';
 import { useHolidayPlaylists } from '@/hooks/useHolidayPlaylists';
 import { ActivityLog } from '@/components/ui/ActivityLog';
 import { PlexClient } from '@/lib/plex/client';
-import { PlaylistPreview, PlexLibrary, PlexEpisode, Holiday } from '@/types';
-import { DEFAULT_TV_LIBRARY } from '@/lib/holiday/config';
+import { PlaylistPreview, PlexLibrary, PlexMedia, Holiday, isPlexEpisode } from '@/types';
+import { DEFAULT_TV_LIBRARY, DEFAULT_MOVIE_LIBRARY } from '@/lib/holiday/config';
 
 interface PlaylistCreatorProps {
   onPlaylistsCreated?: () => void;
@@ -21,24 +21,24 @@ interface PlaylistCreatorProps {
 
 export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
   const { 
-    getLibraries, getEpisodes, getPlaylists, getPlaylistItems, createPlaylist, updatePlaylist, isConnected,
+    getLibraries, getEpisodes, getMovies, getPlaylists, getPlaylistItems, createPlaylist, updatePlaylist, isConnected,
     activityLog, currentPhase, overallProgress, addLogEntry, setCurrentPhase, setOverallProgress, clearActivityLog
   } = usePlex();
   console.log('🔄 PlaylistCreator: Component state', { isConnected });
   const { generatePlaylistPreviews, isAnalyzing, isScrapingWiki, error } = useHolidayPlaylists();
   
   const [libraries, setLibraries] = useState<PlexLibrary[]>([]);
-  const [selectedLibrary, setSelectedLibrary] = useState<string>('');
+  const [selectedLibraries, setSelectedLibraries] = useState<Set<string>>(new Set());
   const [playlistPreviews, setPlaylistPreviews] = useState<PlaylistPreview[]>([]);
   const [useWikipedia, setUseWikipedia] = useState(true);
   const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
   const [isCreatingPlaylists, setIsCreatingPlaylists] = useState(false);
   const [step, setStep] = useState<'holidays' | 'library' | 'analyze' | 'confirm' | 'create'>('holidays');
   const [selectedHolidays, setSelectedHolidays] = useState<Set<Holiday>>(new Set(['Halloween', 'Thanksgiving', 'Christmas', "Valentine's"]));
-  const [selectedEpisodes, setSelectedEpisodes] = useState<Map<string, boolean>>(new Map());
+  const [selectedMedia, setSelectedMedia] = useState<Map<string, boolean>>(new Map());
   const [scanStatus, setScanStatus] = useState<string>('');
   const [scanProgress, setScanProgress] = useState<number>(0);
-  const [totalEpisodes, setTotalEpisodes] = useState<number>(0);
+  const [totalMedia, setTotalMedia] = useState<number>(0);
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(8);
 
   // Set up activity logger for PlexClient
@@ -54,16 +54,37 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
     setIsLoadingLibraries(true);
     try {
       const libs = await getLibraries();
-      const tvLibraries = libs.filter(lib => lib.type === 'show');
-      setLibraries(tvLibraries);
+      const mediaLibraries = libs.filter(lib => lib.type === 'show' || lib.type === 'movie');
+      setLibraries(mediaLibraries);
+      
+      const selectedSet = new Set<string>();
       
       // Auto-select default TV library if it exists
-      const defaultLib = tvLibraries.find(lib => lib.title === DEFAULT_TV_LIBRARY);
-      if (defaultLib) {
-        setSelectedLibrary(defaultLib.key);
-      } else if (tvLibraries.length === 1) {
-        setSelectedLibrary(tvLibraries[0].key);
+      const defaultTvLib = mediaLibraries.find(lib => lib.title === DEFAULT_TV_LIBRARY);
+      if (defaultTvLib) {
+        selectedSet.add(defaultTvLib.key);
       }
+      
+      // Auto-select default movie library if it exists
+      const defaultMovieLib = mediaLibraries.find(lib => lib.title === DEFAULT_MOVIE_LIBRARY);
+      if (defaultMovieLib) {
+        selectedSet.add(defaultMovieLib.key);
+      }
+      
+      // If no defaults found, auto-select single libraries of each type
+      if (selectedSet.size === 0) {
+        const tvLibraries = mediaLibraries.filter(lib => lib.type === 'show');
+        const movieLibraries = mediaLibraries.filter(lib => lib.type === 'movie');
+        
+        if (tvLibraries.length === 1) {
+          selectedSet.add(tvLibraries[0].key);
+        }
+        if (movieLibraries.length === 1) {
+          selectedSet.add(movieLibraries[0].key);
+        }
+      }
+      
+      setSelectedLibraries(selectedSet);
     } catch (err) {
       console.error('Failed to load libraries:', err);
       // Don't crash the component, just log the error
@@ -79,8 +100,8 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
     }
   }, [loadLibraries, isConnected]);
 
-  const analyzeLibrary = async () => {
-    if (!selectedLibrary) return;
+  const analyzeLibraries = async () => {
+    if (selectedLibraries.size === 0) return;
     
     setStep('analyze');
     setScanProgress(0);
@@ -88,21 +109,41 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
     clearActivityLog();
     setCurrentPhase('scanning');
     
-    addLogEntry('info', `Starting episode analysis for ${Array.from(selectedHolidays).join(', ')}`, 'scanning');
-    console.log('🔍 Starting episode analysis for selected holidays:', Array.from(selectedHolidays));
+    const holidayList = Array.from(selectedHolidays).join(', ');
+    addLogEntry('info', `Starting media analysis for ${holidayList}`, 'scanning');
+    console.log('🔍 Starting media analysis for selected holidays:', Array.from(selectedHolidays));
     
     try {
-      // Phase 1: Load episodes from selected library
-      setScanStatus('Loading episodes from Plex library...');
+      // Phase 1: Load media from selected libraries
+      setScanStatus('Loading media from Plex libraries...');
       setScanProgress(10);
       setOverallProgress({ current: 1, total: 5, percentage: 20 });
-      addLogEntry('info', 'Loading episodes from Plex library...', 'scanning');
-      console.log('📚 Loading episodes from library:', selectedLibrary);
+      addLogEntry('info', 'Loading media from Plex libraries...', 'scanning');
+      console.log('📚 Loading media from libraries:', Array.from(selectedLibraries));
       
-      const episodes = await getEpisodes(selectedLibrary);
-      setTotalEpisodes(episodes.length);
-      addLogEntry('success', `Loaded ${episodes.length} episodes from library`, 'scanning');
-      console.log(`📺 Loaded ${episodes.length} episodes from library`);
+      const allMedia: PlexMedia[] = [];
+      const libraryKeys = Array.from(selectedLibraries);
+      
+      for (const libraryKey of libraryKeys) {
+        const library = libraries.find(lib => lib.key === libraryKey);
+        if (!library) continue;
+        
+        if (library.type === 'show') {
+          console.log(`📺 Loading episodes from TV library: ${library.title}`);
+          const episodes = await getEpisodes(libraryKey);
+          allMedia.push(...episodes);
+          addLogEntry('info', `Loaded ${episodes.length} episodes from "${library.title}"`, 'scanning');
+        } else if (library.type === 'movie') {
+          console.log(`🎬 Loading movies from movie library: ${library.title}`);
+          const movies = await getMovies(libraryKey);
+          allMedia.push(...movies);
+          addLogEntry('info', `Loaded ${movies.length} movies from "${library.title}"`, 'scanning');
+        }
+      }
+      
+      setTotalMedia(allMedia.length);
+      addLogEntry('success', `Loaded ${allMedia.length} total media items from ${libraryKeys.length} libraries`, 'scanning');
+      console.log(`📊 Loaded ${allMedia.length} total media items from ${libraryKeys.length} libraries`);
       
       // Phase 2: Get existing playlists
       setScanStatus('Checking existing holiday playlists...');
@@ -112,7 +153,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
       console.log('📋 Checking for existing holiday playlists');
       
       const existingPlaylists = await getPlaylists();
-      const playlistMap = new Map<string, PlexEpisode[]>();
+      const playlistMap = new Map<string, PlexMedia[]>();
       
       let playlistCount = 0;
       for (const playlist of existingPlaylists) {
@@ -120,9 +161,9 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
           console.log(`📝 Found existing playlist: ${playlist.title}`);
           const items = await getPlaylistItems(playlist.key);
           playlistMap.set(playlist.title, items);
-          console.log(`  └── Contains ${items.length} episodes`);
+          console.log(`  └── Contains ${items.length} items`);
           playlistCount++;
-          addLogEntry('info', `Found playlist "${playlist.title}" with ${items.length} episodes`, 'scanning');
+          addLogEntry('info', `Found playlist "${playlist.title}" with ${items.length} items`, 'scanning');
         }
       }
       addLogEntry('success', `Found ${playlistCount} existing holiday playlists`, 'scanning');
@@ -130,11 +171,11 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
       
       // Phase 3: Wikipedia scraping (if enabled)
       if (useWikipedia) {
-        setScanStatus('Scraping Wikipedia for holiday episodes...');
+        setScanStatus('Scraping Wikipedia for holiday content...');
         setScanProgress(30);
         setOverallProgress({ current: 3, total: 5, percentage: 60 });
-        addLogEntry('info', 'Scraping Wikipedia for holiday episodes...', 'scanning');
-        console.log('🌐 Starting Wikipedia scraping for holiday episodes');
+        addLogEntry('info', 'Scraping Wikipedia for holiday content...', 'scanning');
+        console.log('🌐 Starting Wikipedia scraping for holiday content');
       } else {
         setScanProgress(40);
         setOverallProgress({ current: 3, total: 5, percentage: 60 });
@@ -142,16 +183,16 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
         console.log('⏭️ Skipping Wikipedia scraping (disabled)');
       }
       
-      // Phase 4: Episode analysis
-      setScanStatus('Analyzing episodes for holiday matches...');
+      // Phase 4: Media analysis
+      setScanStatus('Analyzing media for holiday matches...');
       setScanProgress(50);
       setOverallProgress({ current: 4, total: 5, percentage: 80 });
-      addLogEntry('info', `Analyzing ${episodes.length} episodes for holiday matches...`, 'scanning');
-      console.log('🔍 Starting episode analysis phase');
-      console.log(`📺 Analyzing ${episodes.length} episodes for holidays:`, Array.from(selectedHolidays));
+      addLogEntry('info', `Analyzing ${allMedia.length} media items for holiday matches...`, 'scanning');
+      console.log('🔍 Starting media analysis phase');
+      console.log(`📊 Analyzing ${allMedia.length} media items for holidays:`, Array.from(selectedHolidays));
       
       // Generate previews for selected holidays only
-      const previews = await generatePlaylistPreviews(episodes, playlistMap, useWikipedia, selectedHolidays, confidenceThreshold);
+      const previews = await generatePlaylistPreviews(allMedia, playlistMap, useWikipedia, selectedHolidays, confidenceThreshold);
       
       // Phase 5: Complete
       setScanStatus('Analysis complete!');
@@ -160,21 +201,26 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
       setCurrentPhase(null);
       
       console.log('✅ Analysis complete! Results:');
-      let totalEpisodesFound = 0;
+      let totalItemsFound = 0;
       previews.forEach(preview => {
-        totalEpisodesFound += preview.episodes.length;
-        addLogEntry('success', `${preview.holiday}: ${preview.episodes.length} episodes found (${preview.newCount} new)`, 'scanning');
-        console.log(`🎭 ${preview.holiday}: ${preview.episodes.length} episodes found (${preview.newCount} new)`);
+        const itemCount = preview.episodes.length + preview.movies.length;
+        totalItemsFound += itemCount;
+        addLogEntry('success', `${preview.holiday}: ${itemCount} items found (${preview.episodes.length} episodes, ${preview.movies.length} movies, ${preview.newCount} new)`, 'scanning');
+        console.log(`🎭 ${preview.holiday}: ${itemCount} items found (${preview.episodes.length} episodes, ${preview.movies.length} movies, ${preview.newCount} new)`);
+        
         preview.episodes.forEach(ep => {
           console.log(`  📺 ${ep.grandparentTitle} - S${ep.seasonNumber}E${ep.index}: ${ep.title}`);
         });
+        preview.movies.forEach(movie => {
+          console.log(`  🎬 ${movie.title} (${movie.year || 'N/A'})`);
+        });
       });
-      addLogEntry('success', `Analysis complete! Found ${totalEpisodesFound} holiday episodes total`, 'scanning');
+      addLogEntry('success', `Analysis complete! Found ${totalItemsFound} holiday media items total`, 'scanning');
       
       setPlaylistPreviews(previews);
       setStep('confirm');
     } catch (err) {
-      console.error('❌ Failed to analyze library:', err);
+      console.error('❌ Failed to analyze libraries:', err);
       addLogEntry('error', `Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'scanning');
       setScanStatus('Analysis failed');
       setCurrentPhase(null);
@@ -186,26 +232,31 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
     setStep('create');
     setCurrentPhase('creating');
     
-    const totalSelected = Array.from(selectedEpisodes.values()).filter(Boolean).length;
-    addLogEntry('info', `Starting playlist creation with ${totalSelected} selected episodes`, 'creating');
-    console.log(`🎵 Starting playlist creation with ${totalSelected} selected episodes`);
+    const totalSelected = Array.from(selectedMedia.values()).filter(Boolean).length;
+    addLogEntry('info', `Starting playlist creation with ${totalSelected} selected items`, 'creating');
+    console.log(`🎵 Starting playlist creation with ${totalSelected} selected items`);
     
     try {
-      const totalPlaylists = playlistPreviews.filter(preview => 
-        preview.episodes.some(ep => selectedEpisodes.get(ep.guid) === true)
-      ).length;
+      const totalPlaylists = playlistPreviews.filter(preview => {
+        const allMedia = [...preview.episodes, ...preview.movies];
+        return allMedia.some(item => selectedMedia.get(item.guid) === true);
+      }).length;
       
       let currentPlaylist = 0;
       
       for (const preview of playlistPreviews) {
-        // Get only the selected episodes for this holiday
+        // Get only the selected media for this holiday
         const selectedEpisodesForHoliday = preview.episodes.filter(ep => 
-          selectedEpisodes.get(ep.guid) === true
+          selectedMedia.get(ep.guid) === true
         );
+        const selectedMoviesForHoliday = preview.movies.filter(movie => 
+          selectedMedia.get(movie.guid) === true
+        );
+        const selectedMediaForHoliday = [...selectedEpisodesForHoliday, ...selectedMoviesForHoliday];
         
-        console.log(`🎭 Processing ${preview.holiday}: ${selectedEpisodesForHoliday.length} selected episodes`);
+        console.log(`🎭 Processing ${preview.holiday}: ${selectedMediaForHoliday.length} selected items (${selectedEpisodesForHoliday.length} episodes, ${selectedMoviesForHoliday.length} movies)`);
         
-        if (selectedEpisodesForHoliday.length > 0) {
+        if (selectedMediaForHoliday.length > 0) {
           currentPlaylist++;
           setOverallProgress({ 
             current: currentPlaylist, 
@@ -222,21 +273,21 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
             addLogEntry('info', `Updating existing playlist: ${preview.name}`, 'adding');
             console.log(`📝 Updating existing playlist: ${preview.name}`);
             const existingItems = await getPlaylistItems(existing.key);
-            console.log(`  └── Current playlist has ${existingItems.length} episodes`);
+            console.log(`  └── Current playlist has ${existingItems.length} items`);
             
-            await updatePlaylist(existing.key, selectedEpisodesForHoliday, existingItems);
-            addLogEntry('success', `Updated playlist "${preview.name}" with ${selectedEpisodesForHoliday.length} episodes`, 'adding');
-            console.log(`  ✅ Updated playlist with ${selectedEpisodesForHoliday.length} episodes`);
+            await updatePlaylist(existing.key, selectedMediaForHoliday, existingItems);
+            addLogEntry('success', `Updated playlist "${preview.name}" with ${selectedMediaForHoliday.length} items`, 'adding');
+            console.log(`  ✅ Updated playlist with ${selectedMediaForHoliday.length} items`);
           } else {
             addLogEntry('info', `Creating new playlist: ${preview.name}`, 'creating');
             console.log(`🆕 Creating new playlist: ${preview.name}`);
-            await createPlaylist(preview.name, selectedEpisodesForHoliday);
-            addLogEntry('success', `Created playlist "${preview.name}" with ${selectedEpisodesForHoliday.length} episodes`, 'creating');
-            console.log(`  ✅ Created playlist with ${selectedEpisodesForHoliday.length} episodes`);
+            await createPlaylist(preview.name, selectedMediaForHoliday);
+            addLogEntry('success', `Created playlist "${preview.name}" with ${selectedMediaForHoliday.length} items`, 'creating');
+            console.log(`  ✅ Created playlist with ${selectedMediaForHoliday.length} items`);
           }
         } else {
-          addLogEntry('info', `Skipping ${preview.holiday}: no episodes selected`, 'creating');
-          console.log(`⏭️ Skipping ${preview.holiday}: no episodes selected`);
+          addLogEntry('info', `Skipping ${preview.holiday}: no items selected`, 'creating');
+          console.log(`⏭️ Skipping ${preview.holiday}: no items selected`);
         }
       }
       
@@ -257,7 +308,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
   const resetAnalysis = () => {
     setStep('holidays');
     setPlaylistPreviews([]);
-    setSelectedEpisodes(new Map());
+    setSelectedMedia(new Map());
   };
 
   // Don't render if not connected to Plex
@@ -346,12 +397,15 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
   }
 
   if (step === 'library') {
+    const tvLibraries = libraries.filter(lib => lib.type === 'show');
+    const movieLibraries = libraries.filter(lib => lib.type === 'movie');
+    
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Select TV Library</CardTitle>
+          <CardTitle>Select Media Libraries</CardTitle>
           <CardDescription>
-            Choose which TV library to scan for holiday episodes
+            Choose which TV and movie libraries to scan for holiday content
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -360,25 +414,66 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
           ) : libraries.length === 0 ? (
             <Alert>
               <AlertDescription>
-                No TV libraries found. Make sure you have TV shows in your Plex server.
+                No media libraries found. Make sure you have TV shows or movies in your Plex server.
               </AlertDescription>
             </Alert>
           ) : (
-            <div className="space-y-2">
-              {libraries.map((library) => (
-                <div key={library.key} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={library.key}
-                    checked={selectedLibrary === library.key}
-                    onCheckedChange={(checked) => {
-                      if (checked) setSelectedLibrary(library.key);
-                    }}
-                  />
-                  <Label htmlFor={library.key} className="flex-1">
-                    {library.title}
-                  </Label>
+            <div className="space-y-4">
+              {tvLibraries.length > 0 && (
+                <div>
+                  <h3 className="font-medium mb-2">📺 TV Show Libraries</h3>
+                  <div className="space-y-2">
+                    {tvLibraries.map((library) => (
+                      <div key={library.key} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={library.key}
+                          checked={selectedLibraries.has(library.key)}
+                          onCheckedChange={(checked) => {
+                            const newSelected = new Set(selectedLibraries);
+                            if (checked) {
+                              newSelected.add(library.key);
+                            } else {
+                              newSelected.delete(library.key);
+                            }
+                            setSelectedLibraries(newSelected);
+                          }}
+                        />
+                        <Label htmlFor={library.key} className="flex-1">
+                          {library.title}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
+              
+              {movieLibraries.length > 0 && (
+                <div>
+                  <h3 className="font-medium mb-2">🎬 Movie Libraries</h3>
+                  <div className="space-y-2">
+                    {movieLibraries.map((library) => (
+                      <div key={library.key} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={library.key}
+                          checked={selectedLibraries.has(library.key)}
+                          onCheckedChange={(checked) => {
+                            const newSelected = new Set(selectedLibraries);
+                            if (checked) {
+                              newSelected.add(library.key);
+                            } else {
+                              newSelected.delete(library.key);
+                            }
+                            setSelectedLibraries(newSelected);
+                          }}
+                        />
+                        <Label htmlFor={library.key} className="flex-1">
+                          {library.title}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -390,7 +485,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
                 onCheckedChange={(checked) => setUseWikipedia(!!checked)}
               />
               <Label htmlFor="useWikipedia">
-                Use Wikipedia scraping for better episode detection
+                Use Wikipedia scraping for better content detection
               </Label>
             </div>
 
@@ -408,7 +503,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
                 className="w-full"
               />
               <div className="text-sm text-gray-600">
-                Lower = more episodes (may include false positives) • Higher = fewer episodes (more accurate)
+                Lower = more items (may include false positives) • Higher = fewer items (more accurate)
               </div>
             </div>
           </div>
@@ -421,10 +516,10 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
               Back to Holiday Selection
             </Button>
             <Button 
-              onClick={analyzeLibrary} 
-              disabled={!selectedLibrary || isAnalyzing || isScrapingWiki}
+              onClick={analyzeLibraries} 
+              disabled={selectedLibraries.size === 0 || isAnalyzing || isScrapingWiki}
             >
-              {isScrapingWiki ? 'Scraping Wikipedia...' : isAnalyzing ? 'Analyzing Episodes...' : 'Analyze Library'}
+              {isScrapingWiki ? 'Scraping Wikipedia...' : isAnalyzing ? 'Analyzing Media...' : 'Analyze Libraries'}
             </Button>
           </div>
 
@@ -457,10 +552,10 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
               <Progress value={scanProgress} className="w-full" />
             </div>
             
-            {totalEpisodes > 0 && (
+            {totalMedia > 0 && (
               <div className="text-sm text-gray-600">
-                <p>📚 Library: {libraries.find(l => l.key === selectedLibrary)?.title}</p>
-                <p>📺 Total episodes: {totalEpisodes.toLocaleString()}</p>
+                <p>📚 Libraries: {Array.from(selectedLibraries).map(key => libraries.find(l => l.key === key)?.title).filter(Boolean).join(', ')}</p>
+                <p>📊 Total media items: {totalMedia.toLocaleString()}</p>
                 <p>🎭 Selected holidays: {Array.from(selectedHolidays).join(', ')}</p>
                 {useWikipedia && <p>🌐 Wikipedia scraping: Enabled</p>}
               </div>
@@ -490,53 +585,55 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
       "Valentine's": '💝'
     };
 
-    // Initialize selected episodes if not already done
-    if (selectedEpisodes.size === 0 && playlistPreviews.length > 0) {
+    // Initialize selected media if not already done
+    if (selectedMedia.size === 0 && playlistPreviews.length > 0) {
       const newSelected = new Map<string, boolean>();
       playlistPreviews.forEach(preview => {
-        preview.episodes.forEach(episode => {
-          newSelected.set(episode.guid, true); // Default to selected
+        [...preview.episodes, ...preview.movies].forEach(item => {
+          newSelected.set(item.guid, true); // Default to selected
         });
       });
-      setSelectedEpisodes(newSelected);
+      setSelectedMedia(newSelected);
     }
 
     const getSelectedCount = (holiday: Holiday) => {
       const preview = playlistPreviews.find(p => p.holiday === holiday);
       if (!preview) return 0;
-      return preview.episodes.filter(ep => selectedEpisodes.get(ep.guid) === true).length;
+      const allMedia = [...preview.episodes, ...preview.movies];
+      return allMedia.filter(item => selectedMedia.get(item.guid) === true).length;
     };
 
-    const toggleEpisode = (episodeGuid: string) => {
-      const newSelected = new Map(selectedEpisodes);
-      newSelected.set(episodeGuid, !newSelected.get(episodeGuid));
-      setSelectedEpisodes(newSelected);
+    const toggleMedia = (mediaGuid: string) => {
+      const newSelected = new Map(selectedMedia);
+      newSelected.set(mediaGuid, !newSelected.get(mediaGuid));
+      setSelectedMedia(newSelected);
     };
 
     const toggleAllForHoliday = (holiday: Holiday, selectAll: boolean) => {
       const preview = playlistPreviews.find(p => p.holiday === holiday);
       if (!preview) return;
       
-      const newSelected = new Map(selectedEpisodes);
-      preview.episodes.forEach(episode => {
-        newSelected.set(episode.guid, selectAll);
+      const newSelected = new Map(selectedMedia);
+      const allMedia = [...preview.episodes, ...preview.movies];
+      allMedia.forEach(item => {
+        newSelected.set(item.guid, selectAll);
       });
-      setSelectedEpisodes(newSelected);
+      setSelectedMedia(newSelected);
     };
 
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Review Episodes</CardTitle>
+          <CardTitle>Review Media</CardTitle>
           <CardDescription>
-            Select which episodes to include in your holiday playlists
+            Select which episodes and movies to include in your holiday playlists
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {playlistPreviews.length === 0 ? (
             <Alert>
               <AlertDescription>
-                No holiday episodes found in your library. Try enabling Wikipedia scraping or add more TV shows.
+                No holiday content found in your libraries. Try enabling Wikipedia scraping or add more content.
               </AlertDescription>
             </Alert>
           ) : (
@@ -571,31 +668,44 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
                   </div>
                   
                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {preview.episodes.map((episode) => (
-                      <div key={episode.guid} className="flex items-start space-x-3">
-                        <Checkbox
-                          id={episode.guid}
-                          checked={selectedEpisodes.get(episode.guid) === true}
-                          onCheckedChange={() => toggleEpisode(episode.guid)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <Label 
-                            htmlFor={episode.guid} 
-                            className="cursor-pointer block"
-                          >
-                            <div className="font-medium">{episode.grandparentTitle}</div>
-                            <div className="text-sm text-gray-600">
-                              S{episode.seasonNumber}E{episode.index}: {episode.title}
-                            </div>
-                            {episode.summary && (
-                              <div className="text-xs text-gray-500 mt-1 line-clamp-2">
-                                {episode.summary}
-                              </div>
-                            )}
-                          </Label>
+                    {[...preview.episodes, ...preview.movies].map((item) => {
+                      return (
+                        <div key={item.guid} className="flex items-start space-x-3">
+                          <Checkbox
+                            id={item.guid}
+                            checked={selectedMedia.get(item.guid) === true}
+                            onCheckedChange={() => toggleMedia(item.guid)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <Label 
+                              htmlFor={item.guid} 
+                              className="cursor-pointer block"
+                            >
+                              {isPlexEpisode(item) ? (
+                                <>
+                                  <div className="font-medium">📺 {item.grandparentTitle}</div>
+                                  <div className="text-sm text-gray-600">
+                                    S{item.seasonNumber}E{item.index}: {item.title}
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="font-medium">🎬 {item.title}</div>
+                                  <div className="text-sm text-gray-600">
+                                    Movie{item.year ? ` (${item.year})` : ''}
+                                  </div>
+                                </>
+                              )}
+                              {item.summary && (
+                                <div className="text-xs text-gray-500 mt-1 line-clamp-2">
+                                  {item.summary}
+                                </div>
+                              )}
+                            </Label>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -608,7 +718,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
             </Button>
             <Button 
               onClick={createSelectedPlaylists}
-              disabled={Array.from(selectedEpisodes.values()).every(selected => !selected)}
+              disabled={Array.from(selectedMedia.values()).every(selected => !selected)}
               className="flex-1"
             >
               Create/Update Playlists

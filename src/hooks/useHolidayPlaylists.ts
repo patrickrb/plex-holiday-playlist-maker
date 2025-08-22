@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { HolidayMatcher } from '@/lib/holiday/matcher';
 import { WikipediaScraper } from '@/lib/scraper/wikipedia';
-import { Holiday, PlexEpisode, HolidayMatch, PlaylistPreview } from '@/types';
+import { Holiday, PlexMedia, HolidayMatch, PlaylistPreview } from '@/types';
 import { PLAYLIST_PREFIX } from '@/lib/holiday/config';
 
 export function useHolidayPlaylists() {
@@ -45,8 +45,8 @@ export function useHolidayPlaylists() {
     }
   }, []);
 
-  const analyzeEpisodes = useCallback(async (
-    episodes: PlexEpisode[],
+  const analyzeMedia = useCallback(async (
+    media: PlexMedia[],
     useWikipedia = true,
     confidenceThreshold = 8,
     selectedHolidays?: Set<Holiday>
@@ -55,7 +55,7 @@ export function useHolidayPlaylists() {
     setError(null);
 
     try {
-      console.log(`🔍 useHolidayPlaylists: Starting analysis of ${episodes.length} episodes`);
+      console.log(`🔍 useHolidayPlaylists: Starting analysis of ${media.length} media items`);
       console.log(`🌐 Wikipedia scraping: ${useWikipedia ? 'Enabled' : 'Disabled'}`);
       console.log(`🎯 Selected holidays: ${selectedHolidays ? Array.from(selectedHolidays).join(', ') : 'All holidays'}`);
       
@@ -74,16 +74,23 @@ export function useHolidayPlaylists() {
       const matcher = new HolidayMatcher(wikiTitles);
       
       // Find matches with confidence threshold
-      console.log(`🔍 Starting pattern matching on episodes (threshold: ${confidenceThreshold})...`);
-      const matches = matcher.findMatchesWithThreshold(episodes, confidenceThreshold, selectedHolidays);
+      console.log(`🔍 Starting pattern matching on media (threshold: ${confidenceThreshold})...`);
+      const matches = matcher.findMatchesWithThreshold(media, confidenceThreshold, selectedHolidays);
       
       console.log('✅ Pattern matching complete! Results:');
       matches.forEach(match => {
-        console.log(`🎭 ${match.holiday}: ${match.episodes.length} episodes matched`);
+        const totalItems = match.episodes.length + match.movies.length;
+        console.log(`🎭 ${match.holiday}: ${totalItems} items matched (${match.episodes.length} episodes, ${match.movies.length} movies)`);
         if (match.episodes.length > 0) {
           console.log('  Episodes found:');
           match.episodes.forEach(ep => {
             console.log(`    📺 ${ep.grandparentTitle} - S${ep.seasonNumber}E${ep.index}: ${ep.title}`);
+          });
+        }
+        if (match.movies.length > 0) {
+          console.log('  Movies found:');
+          match.movies.forEach(movie => {
+            console.log(`    🎬 ${movie.title} (${movie.year || 'N/A'})`);
           });
         }
       });
@@ -91,7 +98,7 @@ export function useHolidayPlaylists() {
       return matches;
     } catch (err) {
       console.error('❌ useHolidayPlaylists: Analysis failed:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to analyze episodes';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to analyze media';
       setError(errorMessage);
       return [];
     } finally {
@@ -100,34 +107,59 @@ export function useHolidayPlaylists() {
   }, [scrapeWikipediaTitles]);
 
   const generatePlaylistPreviews = useCallback(async (
-    episodes: PlexEpisode[],
-    existingPlaylists: Map<string, PlexEpisode[]>,
+    media: PlexMedia[],
+    existingPlaylists: Map<string, PlexMedia[]>,
     useWikipedia = true,
     selectedHolidays?: Set<Holiday>,
     confidenceThreshold = 8
   ): Promise<PlaylistPreview[]> => {
-    const matches = await analyzeEpisodes(episodes, useWikipedia, confidenceThreshold, selectedHolidays);
+    const matches = await analyzeMedia(media, useWikipedia, confidenceThreshold, selectedHolidays);
     
-    // No need to filter matches since the matcher already only processed selected holidays
-    return matches.map(match => {
-      const playlistName = `${PLAYLIST_PREFIX}${match.holiday}`;
-      const existingEpisodes = existingPlaylists.get(playlistName) || [];
-      const existingGuids = new Set(existingEpisodes.map(ep => ep.guid));
-      const newEpisodes = match.episodes.filter(ep => !existingGuids.has(ep.guid));
+    const previews: PlaylistPreview[] = [];
+    
+    // Create separate playlists for TV shows and movies
+    for (const match of matches) {
+      // Create TV playlist if there are episodes
+      if (match.episodes.length > 0) {
+        const tvPlaylistName = `${PLAYLIST_PREFIX}${match.holiday} TV`;
+        const existingTvMedia = existingPlaylists.get(tvPlaylistName) || [];
+        const existingTvGuids = new Set(existingTvMedia.map(item => item.guid));
+        const newTvMedia = match.episodes.filter(ep => !existingTvGuids.has(ep.guid));
 
-      return {
-        holiday: match.holiday,
-        name: playlistName,
-        episodes: match.episodes,
-        existingCount: existingEpisodes.length,
-        newCount: newEpisodes.length,
-      };
-    });
-  }, [analyzeEpisodes]);
+        previews.push({
+          holiday: match.holiday,
+          name: tvPlaylistName,
+          episodes: match.episodes,
+          movies: [], // TV playlist only contains episodes
+          existingCount: existingTvMedia.length,
+          newCount: newTvMedia.length,
+        });
+      }
 
-  const getMatchSummary = useCallback((episodes: PlexEpisode[]): Record<Holiday, number> => {
+      // Create Movie playlist if there are movies
+      if (match.movies.length > 0) {
+        const moviePlaylistName = `${PLAYLIST_PREFIX}${match.holiday} Movies`;
+        const existingMovieMedia = existingPlaylists.get(moviePlaylistName) || [];
+        const existingMovieGuids = new Set(existingMovieMedia.map(item => item.guid));
+        const newMovieMedia = match.movies.filter(movie => !existingMovieGuids.has(movie.guid));
+
+        previews.push({
+          holiday: match.holiday,
+          name: moviePlaylistName,
+          episodes: [], // Movie playlist only contains movies
+          movies: match.movies,
+          existingCount: existingMovieMedia.length,
+          newCount: newMovieMedia.length,
+        });
+      }
+    }
+    
+    return previews;
+  }, [analyzeMedia]);
+
+  const getMatchSummary = useCallback((media: PlexMedia[]): Record<Holiday, number> => {
     const matcher = new HolidayMatcher(scrapedTitles);
-    return matcher.getMatchSummary(episodes);
+    return matcher.getMatchSummary(media);
   }, [scrapedTitles]);
 
   const clearWikiCache = useCallback(() => {
@@ -146,7 +178,7 @@ export function useHolidayPlaylists() {
     error,
     scrapedTitles,
     scrapeWikipediaTitles,
-    analyzeEpisodes,
+    analyzeMedia,
     generatePlaylistPreviews,
     getMatchSummary,
     clearWikiCache,

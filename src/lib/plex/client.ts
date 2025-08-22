@@ -1,4 +1,4 @@
-import { PlexServer, PlexConnection, PlexLibrary, PlexEpisode, PlexPlaylist } from '@/types';
+import { PlexServer, PlexConnection, PlexLibrary, PlexEpisode, PlexMovie, PlexMedia, PlexPlaylist } from '@/types';
 
 // Create a global activity logger that can be used by PlexClient
 interface ActivityLogger {
@@ -134,6 +134,32 @@ export class PlexClient {
     }
   }
 
+  async getMovies(libraryKey: string): Promise<PlexMovie[]> {
+    try {
+      const data = await this.makeRequest(`/library/sections/${libraryKey}/all`, 'GET', {
+        type: 1, // Movies
+        includeGuids: 1,
+      });
+
+      const movies = data?.MediaContainer?.Metadata || [];
+      
+      return movies
+        .filter((movie: { guid: string }) => movie.guid) // Only movies with GUIDs
+        .map((movie: { guid: string; key: string; title?: string; summary?: string; year?: number; thumb?: string; addedAt?: number }) => ({
+          guid: movie.guid,
+          key: movie.key,
+          title: movie.title || '',
+          summary: movie.summary || '',
+          year: movie.year,
+          thumb: movie.thumb,
+          addedAt: movie.addedAt,
+        }));
+    } catch (error) {
+      console.error('Failed to get movies:', error);
+      return [];
+    }
+  }
+
   async getEpisodes(libraryKey: string): Promise<PlexEpisode[]> {
     try {
       const data = await this.makeRequest(`/library/sections/${libraryKey}/all`, 'GET', {
@@ -205,7 +231,7 @@ export class PlexClient {
     }
   }
 
-  async getPlaylistItems(playlistKey: string): Promise<PlexEpisode[]> {
+  async getPlaylistItems(playlistKey: string): Promise<PlexMedia[]> {
     try {
       console.log(`📋 PlexClient: Getting playlist items for key: "${playlistKey}"`);
       
@@ -220,45 +246,62 @@ export class PlexClient {
       
       return items
         .filter((item: { guid: string }) => item.guid)
-        .map((item: { guid: string; key: string; title?: string; summary?: string; grandparentTitle?: string; parentIndex?: string; index?: string; thumb?: string; year?: number; addedAt?: number }) => ({
-          guid: item.guid,
-          key: item.key,
-          title: item.title || '',
-          summary: item.summary || '',
-          grandparentTitle: item.grandparentTitle || '',
-          seasonNumber: parseInt(item.parentIndex || '0') || 0,
-          index: parseInt(item.index || '0') || 0,
-          thumb: item.thumb,
-          year: item.year,
-          addedAt: item.addedAt,
-        }));
+        .map((item: { guid: string; key: string; title?: string; summary?: string; grandparentTitle?: string; parentIndex?: string; index?: string; thumb?: string; year?: number; addedAt?: number }) => {
+          // Check if this is an episode (has grandparentTitle) or a movie
+          if (item.grandparentTitle) {
+            // This is an episode
+            return {
+              guid: item.guid,
+              key: item.key,
+              title: item.title || '',
+              summary: item.summary || '',
+              grandparentTitle: item.grandparentTitle || '',
+              seasonNumber: parseInt(item.parentIndex || '0') || 0,
+              index: parseInt(item.index || '0') || 0,
+              thumb: item.thumb,
+              year: item.year,
+              addedAt: item.addedAt,
+            } as PlexEpisode;
+          } else {
+            // This is a movie
+            return {
+              guid: item.guid,
+              key: item.key,
+              title: item.title || '',
+              summary: item.summary || '',
+              year: item.year,
+              thumb: item.thumb,
+              addedAt: item.addedAt,
+            } as PlexMovie;
+          }
+        });
     } catch (error) {
       console.error('Failed to get playlist items:', error);
       return [];
     }
   }
 
-  async createPlaylist(name: string, episodes: PlexEpisode[]): Promise<boolean> {
+  async createPlaylist(name: string, media: PlexMedia[]): Promise<boolean> {
     try {
-      console.log(`🎵 PlexClient: Creating playlist "${name}" with ${episodes.length} episodes`);
+      console.log(`🎵 PlexClient: Creating playlist "${name}" with ${media.length} items`);
       
-      if (episodes.length === 0) {
-        throw new Error('Cannot create playlist with no episodes');
+      if (media.length === 0) {
+        throw new Error('Cannot create playlist with no media');
       }
 
-      const firstEpisodeKey = episodes[0].key.split('/').pop();
-      if (!firstEpisodeKey) {
-        console.error(`❌ PlexClient: Invalid first episode key:`, episodes[0].key);
-        throw new Error(`Invalid episode key: ${episodes[0].key}`);
+      const firstMediaKey = media[0].key.split('/').pop();
+      if (!firstMediaKey) {
+        console.error(`❌ PlexClient: Invalid first media key:`, media[0].key);
+        throw new Error(`Invalid media key: ${media[0].key}`);
       }
       // Use the metadata key directly as the URI
-      const uri = `/library/metadata/${firstEpisodeKey}`;
+      const uri = `/library/metadata/${firstMediaKey}`;
       
       console.log('📝 PlexClient: Playlist creation parameters:', {
         name,
-        episodeCount: episodes.length,
-        firstEpisode: `${episodes[0].grandparentTitle} - ${episodes[0].title}`,
-        firstEpisodeKey,
+        mediaCount: media.length,
+        firstMedia: media[0].title,
+        firstMediaKey,
         uri
       });
 
@@ -299,14 +342,14 @@ export class PlexClient {
       
       console.log(`✅ PlexClient: Playlist created with key: "${playlistKey}" (from raw: "${rawPlaylistKey}")`);
 
-      // Add remaining episodes if there are more than one
-      if (episodes.length > 1) {
-        console.log(`➕ PlexClient: Adding ${episodes.length - 1} remaining episodes to playlist`);
-        const remainingEpisodes = episodes.slice(1);
-        await this.addToPlaylist(playlistKey, remainingEpisodes);
+      // Add remaining media if there are more than one
+      if (media.length > 1) {
+        console.log(`➕ PlexClient: Adding ${media.length - 1} remaining items to playlist`);
+        const remainingMedia = media.slice(1);
+        await this.addToPlaylist(playlistKey, remainingMedia);
       }
 
-      console.log(`🎉 PlexClient: Successfully created playlist "${name}" with ${episodes.length} episodes`);
+      console.log(`🎉 PlexClient: Successfully created playlist "${name}" with ${media.length} items`);
       return true;
     } catch (error) {
       console.error('❌ PlexClient: Failed to create playlist:', error);
@@ -314,21 +357,18 @@ export class PlexClient {
     }
   }
 
-  async addSingleEpisodeToPlaylist(playlistKey: string, episode: PlexEpisode): Promise<boolean> {
+  async addSingleMediaToPlaylist(playlistKey: string, media: PlexMedia): Promise<boolean> {
     try {
-      console.log(`🧪 PlexClient: Testing single episode add: ${episode.grandparentTitle} - ${episode.title}`);
-      console.log(`📝 PlexClient: Episode details:`, {
-        guid: episode.guid,
-        key: episode.key,
-        title: episode.title,
-        grandparentTitle: episode.grandparentTitle,
-        seasonNumber: episode.seasonNumber,
-        index: episode.index
+      console.log(`🧪 PlexClient: Testing single media add: ${media.title}`);
+      console.log(`📝 PlexClient: Media details:`, {
+        guid: media.guid,
+        key: media.key,
+        title: media.title,
       });
       
-      const key = episode.key.split('/').pop();
+      const key = media.key.split('/').pop();
       if (!key) {
-        console.error(`❌ PlexClient: Invalid episode key for test:`, episode.key);
+        console.error(`❌ PlexClient: Invalid media key for test:`, media.key);
         return false;
       }
       
@@ -337,14 +377,14 @@ export class PlexClient {
       
       // Use proper server URI format as per Plex API documentation
       const serverUri = `server://${realMachineId}/com.plexapp.plugins.library/library/metadata/${key}`;
-      console.log(`📝 PlexClient: Test episode server URI: ${serverUri}`);
+      console.log(`📝 PlexClient: Test media server URI: ${serverUri}`);
       
       console.log(`🔄 PlexClient: Using correct server URI format per Plex API docs...`);
       const response = await this.makeRequest(`/playlists/${playlistKey}/items`, 'PUT', {
         uri: serverUri,
       });
       
-      console.log(`📋 PlexClient: Test episode response:`, response);
+      console.log(`📋 PlexClient: Test media response:`, response);
       
       // Log detailed response analysis
       if (response?.MediaContainer) {
@@ -359,28 +399,28 @@ export class PlexClient {
         });
       }
       
-      // Verify the episode was added
+      // Verify the media was added
       const playlistItems = await this.getPlaylistItems(playlistKey);
-      const found = playlistItems.some(ep => ep.guid === episode.guid);
-      console.log(`🔍 PlexClient: Test episode verification: ${found ? 'FOUND' : 'NOT FOUND'} in playlist`);
+      const found = playlistItems.some(item => item.guid === media.guid);
+      console.log(`🔍 PlexClient: Test media verification: ${found ? 'FOUND' : 'NOT FOUND'} in playlist`);
       
       if (!found) {
-        console.warn(`❌ PlexClient: Server URI format failed to add episode to playlist`);
+        console.warn(`❌ PlexClient: Server URI format failed to add media to playlist`);
         console.warn(`📊 PlexClient: Debug info - Machine ID: ${this.getMachineIdentifier()}`);
         console.warn(`📊 PlexClient: Debug info - Server URL: ${this.server.url}`);
-        console.warn(`📊 PlexClient: Debug info - Episode key: ${episode.key}`);
+        console.warn(`📊 PlexClient: Debug info - Media key: ${media.key}`);
       }
       
       return found;
     } catch (error) {
-      console.error('❌ PlexClient: Single episode test failed:', error);
+      console.error('❌ PlexClient: Single media test failed:', error);
       return false;
     }
   }
 
-  async addToPlaylist(playlistKey: string, episodes: PlexEpisode[]): Promise<boolean> {
+  async addToPlaylist(playlistKey: string, media: PlexMedia[]): Promise<boolean> {
     try {
-      console.log(`➕ PlexClient: Adding ${episodes.length} episodes to playlist`, {
+      console.log(`➕ PlexClient: Adding ${media.length} items to playlist`, {
         playlistKey,
         fullPath: `/playlists/${playlistKey}/items`
       });
@@ -391,67 +431,67 @@ export class PlexClient {
         throw new Error(`Invalid playlist key: ${playlistKey}`);
       }
       
-      if (episodes.length === 0) {
-        console.log('⏭️ PlexClient: No episodes to add, skipping');
+      if (media.length === 0) {
+        console.log('⏭️ PlexClient: No media to add, skipping');
         return true;
       }
 
-      // Test with single episode first to isolate issues
-      if (episodes.length > 1) {
-        console.log(`🧪 PlexClient: Testing with single episode first...`);
-        const testResult = await this.addSingleEpisodeToPlaylist(playlistKey, episodes[0]);
+      // Test with single media first to isolate issues
+      if (media.length > 1) {
+        console.log(`🧪 PlexClient: Testing with single media first...`);
+        const testResult = await this.addSingleMediaToPlaylist(playlistKey, media[0]);
         if (!testResult) {
-          console.error(`❌ PlexClient: Single episode test failed, aborting batch operation`);
+          console.error(`❌ PlexClient: Single media test failed, aborting batch operation`);
           return false;
         }
-        console.log(`✅ PlexClient: Single episode test passed, proceeding with remaining ${episodes.length - 1} episodes`);
-        // Continue with remaining episodes
-        episodes = episodes.slice(1);
-        if (episodes.length === 0) return true;
+        console.log(`✅ PlexClient: Single media test passed, proceeding with remaining ${media.length - 1} items`);
+        // Continue with remaining media
+        media = media.slice(1);
+        if (media.length === 0) return true;
       }
 
       // Get real machine identifier for server URIs
       const realMachineId = await this.getRealMachineIdentifier();
       
-      const uris = episodes.map(ep => {
-        const key = ep.key.split('/').pop();
+      const uris = media.map(item => {
+        const key = item.key.split('/').pop();
         if (!key) {
-          console.error(`❌ PlexClient: Invalid episode key for ${ep.grandparentTitle} - ${ep.title}:`, ep.key);
-          throw new Error(`Invalid episode key: ${ep.key}`);
+          console.error(`❌ PlexClient: Invalid media key for ${item.title}:`, item.key);
+          throw new Error(`Invalid media key: ${item.key}`);
         }
         const serverUri = `server://${realMachineId}/com.plexapp.plugins.library/library/metadata/${key}`;
-        console.log(`📺 PlexClient: Episode Server URI: ${ep.grandparentTitle} - ${ep.title} -> ${serverUri}`);
+        console.log(`📺 PlexClient: Media Server URI: ${item.title} -> ${serverUri}`);
         return serverUri;
       });
 
-      // Add episodes one by one since batch requests seem to be overwriting
-      console.log(`📝 PlexClient: Adding ${episodes.length} episodes individually to avoid batch issues`);
-      globalActivityLogger.addLogEntry?.('info', `Adding ${episodes.length} episodes individually to playlist`, 'adding');
+      // Add media one by one since batch requests seem to be overwriting
+      console.log(`📝 PlexClient: Adding ${media.length} items individually to avoid batch issues`);
+      globalActivityLogger.addLogEntry?.('info', `Adding ${media.length} items individually to playlist`, 'adding');
 
       let successCount = 0;
-      for (let i = 0; i < episodes.length; i++) {
-        const episode = episodes[i];
+      for (let i = 0; i < media.length; i++) {
+        const item = media[i];
         const uri = uris[i];
         
         const currentProgress = {
           current: i + 1,
-          total: episodes.length,
-          percentage: Math.round(((i + 1) / episodes.length) * 100)
+          total: media.length,
+          percentage: Math.round(((i + 1) / media.length) * 100)
         };
         
         globalActivityLogger.addLogEntry?.('info', 
-          `Adding episode ${i + 1}/${episodes.length}: ${episode.grandparentTitle} - ${episode.title}`, 
+          `Adding item ${i + 1}/${media.length}: ${item.title}`, 
           'adding', 
           currentProgress
         );
-        console.log(`📦 PlexClient: Adding episode ${i + 1}/${episodes.length}: ${episode.grandparentTitle} - ${episode.title}`);
+        console.log(`📦 PlexClient: Adding item ${i + 1}/${media.length}: ${item.title}`);
         
         try {
           const response = await this.makeRequest(`/playlists/${playlistKey}/items`, 'PUT', {
             uri: uri,
           });
           
-          console.log(`📋 PlexClient: Episode ${i + 1} response:`, response);
+          console.log(`📋 PlexClient: Item ${i + 1} response:`, response);
           
           // Check response for success indicators
           if (response?.MediaContainer) {
@@ -461,76 +501,75 @@ export class PlexClient {
             if (leafCountAdded > 0 || leafCountRequested > 0) {
               successCount++;
               globalActivityLogger.addLogEntry?.('success', 
-                `Added "${episode.title}" from ${episode.grandparentTitle}`, 
+                `Added "${item.title}"`, 
                 'adding'
               );
-              console.log(`✅ PlexClient: Episode ${i + 1} added successfully (leafCountAdded: ${leafCountAdded}, leafCountRequested: ${leafCountRequested})`);
+              console.log(`✅ PlexClient: Item ${i + 1} added successfully (leafCountAdded: ${leafCountAdded}, leafCountRequested: ${leafCountRequested})`);
             } else {
               globalActivityLogger.addLogEntry?.('warning', 
-                `May have failed to add "${episode.title}" from ${episode.grandparentTitle}`, 
+                `May have failed to add "${item.title}"`, 
                 'adding'
               );
-              console.warn(`⚠️ PlexClient: Episode ${i + 1} may not have been added (leafCountAdded: ${leafCountAdded}, leafCountRequested: ${leafCountRequested})`);
+              console.warn(`⚠️ PlexClient: Item ${i + 1} may not have been added (leafCountAdded: ${leafCountAdded}, leafCountRequested: ${leafCountRequested})`);
             }
           }
         } catch (error) {
           globalActivityLogger.addLogEntry?.('error', 
-            `Failed to add "${episode.title}" from ${episode.grandparentTitle}: ${error}`, 
+            `Failed to add "${item.title}": ${error}`, 
             'adding'
           );
-          console.error(`❌ PlexClient: Failed to add episode ${i + 1}:`, error);
+          console.error(`❌ PlexClient: Failed to add item ${i + 1}:`, error);
         }
       }
       
       globalActivityLogger.addLogEntry?.('success', 
-        `Individual additions complete. ${successCount}/${episodes.length} episodes processed successfully`, 
+        `Individual additions complete. ${successCount}/${media.length} items processed successfully`, 
         'adding'
       );
-      console.log(`📊 PlexClient: Individual additions complete. ${successCount}/${episodes.length} episodes processed successfully.`);
+      console.log(`📊 PlexClient: Individual additions complete. ${successCount}/${media.length} items processed successfully.`);
 
-      // Verify episodes were actually added by reading the playlist back
-      console.log(`🔍 PlexClient: Verifying episodes were added to playlist...`);
+      // Verify media were actually added by reading the playlist back
+      console.log(`🔍 PlexClient: Verifying items were added to playlist...`);
       const updatedPlaylistItems = await this.getPlaylistItems(playlistKey);
-      console.log(`📊 PlexClient: Playlist now contains ${updatedPlaylistItems.length} total episodes`);
+      console.log(`📊 PlexClient: Playlist now contains ${updatedPlaylistItems.length} total items`);
       
-      // Check if our episodes are in the playlist
-      const addedGuids = new Set(episodes.map(ep => ep.guid));
-      const foundEpisodes = updatedPlaylistItems.filter(ep => addedGuids.has(ep.guid));
-      console.log(`✅ PlexClient: ${foundEpisodes.length}/${episodes.length} episodes verified in playlist`);
+      // Check if our media are in the playlist
+      const addedGuids = new Set(media.map(item => item.guid));
+      const foundItems = updatedPlaylistItems.filter(item => addedGuids.has(item.guid));
+      console.log(`✅ PlexClient: ${foundItems.length}/${media.length} items verified in playlist`);
       
-      if (foundEpisodes.length < episodes.length) {
-        console.warn(`⚠️ PlexClient: ${episodes.length - foundEpisodes.length} episodes missing from playlist after add operation`);
+      if (foundItems.length < media.length) {
+        console.warn(`⚠️ PlexClient: ${media.length - foundItems.length} items missing from playlist after add operation`);
         
-        // Log which episodes are missing
-        const foundGuids = new Set(foundEpisodes.map(ep => ep.guid));
-        const missingEpisodes = episodes.filter(ep => !foundGuids.has(ep.guid));
-        console.warn(`❌ PlexClient: Missing episodes:`, missingEpisodes.map(ep => ({
-          title: ep.title,
-          show: ep.grandparentTitle,
-          guid: ep.guid,
-          key: ep.key
+        // Log which items are missing
+        const foundGuids = new Set(foundItems.map(item => item.guid));
+        const missingItems = media.filter(item => !foundGuids.has(item.guid));
+        console.warn(`❌ PlexClient: Missing items:`, missingItems.map(item => ({
+          title: item.title,
+          guid: item.guid,
+          key: item.key
         })));
       }
       
-      console.log(`🎉 PlexClient: Successfully added ${foundEpisodes.length} episodes to playlist (${episodes.length} requested)`);
-      return foundEpisodes.length > 0;
+      console.log(`🎉 PlexClient: Successfully added ${foundItems.length} items to playlist (${media.length} requested)`);
+      return foundItems.length > 0;
     } catch (error) {
       console.error('❌ PlexClient: Failed to add to playlist:', error);
       return false;
     }
   }
 
-  async updatePlaylist(playlistKey: string, newEpisodes: PlexEpisode[], existingEpisodes: PlexEpisode[]): Promise<boolean> {
+  async updatePlaylist(playlistKey: string, newMedia: PlexMedia[], existingMedia: PlexMedia[]): Promise<boolean> {
     try {
-      // Find episodes to add (not already in playlist)
-      const existingGuids = new Set(existingEpisodes.map(ep => ep.guid));
-      const episodesToAdd = newEpisodes.filter(ep => !existingGuids.has(ep.guid));
+      // Find media to add (not already in playlist)
+      const existingGuids = new Set(existingMedia.map(item => item.guid));
+      const mediaToAdd = newMedia.filter(item => !existingGuids.has(item.guid));
 
-      if (episodesToAdd.length === 0) {
+      if (mediaToAdd.length === 0) {
         return true; // Nothing to add
       }
 
-      return await this.addToPlaylist(playlistKey, episodesToAdd);
+      return await this.addToPlaylist(playlistKey, mediaToAdd);
     } catch (error) {
       console.error('Failed to update playlist:', error);
       return false;
