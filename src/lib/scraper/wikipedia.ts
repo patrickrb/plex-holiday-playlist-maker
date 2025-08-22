@@ -39,7 +39,7 @@ export class WikipediaScraper {
     }
   }
 
-  async scrapeTitles(skipScrape = false): Promise<Map<Holiday, string[]>> {
+  async scrapeTitles(skipScrape = false, selectedHolidays?: Set<Holiday>): Promise<Map<Holiday, string[]>> {
     if (skipScrape) {
       return new Map();
     }
@@ -50,7 +50,10 @@ export class WikipediaScraper {
       for (const [key, value] of Object.entries(this.cache)) {
         if (key.startsWith('wiki_titles::') && Array.isArray(value)) {
           const holiday = key.replace('wiki_titles::', '') as Holiday;
-          results.set(holiday, value);
+          // Only include if not filtering by selected holidays, or if this holiday is selected
+          if (!selectedHolidays || selectedHolidays.has(holiday)) {
+            results.set(holiday, value);
+          }
         }
       }
       if (results.size > 0) {
@@ -80,8 +83,13 @@ export class WikipediaScraper {
 
       for (const [holiday, titles] of Object.entries(data)) {
         if (Array.isArray(titles)) {
-          results.set(holiday as Holiday, titles);
+          // Always cache all holidays, but only return selected ones
           cacheData[`wiki_titles::${holiday}`] = titles;
+          
+          // Only include if not filtering by selected holidays, or if this holiday is selected
+          if (!selectedHolidays || selectedHolidays.has(holiday as Holiday)) {
+            results.set(holiday as Holiday, titles);
+          }
         }
       }
 
