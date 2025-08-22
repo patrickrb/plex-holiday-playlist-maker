@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { usePlex } from '@/contexts/PlexContext';
-import { usePlexOAuth } from '@/hooks/usePlexOAuth';
+import { usePlexOAuth } from '@/contexts/PlexOAuthContext';
 import { PlaylistPreview, PlexEpisode } from '@/types';
 
 export default function Home() {
@@ -128,7 +128,12 @@ export default function Home() {
 
           {/* Main Content */}
           {!session.isAuthenticated || !session.selectedServer ? (
-            <PlexOAuthLogin isConnecting={isConnectingToServer} />
+            <PlexOAuthLogin 
+              isConnecting={isConnectingToServer}
+              onSuccess={() => {
+                // Server was selected, state should automatically trigger next step
+              }}
+            />
           ) : !isConnected && !isConnectingToServer ? (
             <Card>
               <CardHeader>

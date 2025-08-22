@@ -1,8 +1,26 @@
-import { useState, useCallback, useEffect } from 'react';
+'use client';
+
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { PlexOAuthManager } from '@/lib/plex/oauth';
 import { PlexAuthSession, PlexOAuthServer } from '@/types/oauth';
 
-export function usePlexOAuth() {
+interface PlexOAuthContextType {
+  session: PlexAuthSession;
+  isLoading: boolean;
+  error: string | null;
+  initiateLogin: () => Promise<string | null>;
+  pollForToken: () => Promise<boolean>;
+  selectServer: (server: PlexOAuthServer) => void;
+  logout: () => void;
+  getServerUrl: (server: PlexOAuthServer) => string;
+  getSelectedServerConnection: () => { url: string; token: string; name: string } | null;
+  loadSavedSession: () => void;
+  refreshSession: () => Promise<boolean>;
+}
+
+const PlexOAuthContext = createContext<PlexOAuthContextType | undefined>(undefined);
+
+export function PlexOAuthProvider({ children }: { children: React.ReactNode }) {
   const [oauthManager] = useState(() => new PlexOAuthManager());
   const [session, setSession] = useState<PlexAuthSession>({
     isAuthenticated: false,
@@ -191,7 +209,7 @@ export function usePlexOAuth() {
     }
   }, [session, oauthManager, saveSession, logout]);
 
-  return {
+  const value: PlexOAuthContextType = {
     session,
     isLoading,
     error,
@@ -204,4 +222,18 @@ export function usePlexOAuth() {
     loadSavedSession,
     refreshSession,
   };
+
+  return (
+    <PlexOAuthContext.Provider value={value}>
+      {children}
+    </PlexOAuthContext.Provider>
+  );
+}
+
+export function usePlexOAuth() {
+  const context = useContext(PlexOAuthContext);
+  if (context === undefined) {
+    throw new Error('usePlexOAuth must be used within a PlexOAuthProvider');
+  }
+  return context;
 }
