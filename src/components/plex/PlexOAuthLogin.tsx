@@ -30,13 +30,7 @@ export function PlexOAuthLogin({ onSuccess, isConnecting }: PlexOAuthLoginProps)
   const [pollProgress, setPollProgress] = useState(0);
 
   useEffect(() => {
-    console.log('PlexOAuthLogin effect triggered:', { 
-      isAuthenticated: session.isAuthenticated, 
-      hasSelectedServer: !!session.selectedServer,
-      selectedServerName: session.selectedServer?.name 
-    });
     if (session.isAuthenticated && session.selectedServer) {
-      console.log('Calling onSuccess callback...');
       onSuccess?.();
     }
   }, [session.isAuthenticated, session.selectedServer, onSuccess]);
@@ -79,10 +73,7 @@ export function PlexOAuthLogin({ onSuccess, isConnecting }: PlexOAuthLoginProps)
   };
 
   const handleServerSelect = (server: PlexOAuthServer) => {
-    console.log('Selecting server:', server.name, server);
-    console.log('Current session state:', session);
     selectServer(server);
-    console.log('Server selected, session should update...');
   };
 
   if (session.isAuthenticated && session.user) {

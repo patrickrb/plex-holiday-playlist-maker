@@ -48,11 +48,6 @@ export default function Home() {
   }, [session.selectedServer, getSelectedServerConnection, isConnected, isConnecting, isConnectingToServer, connectionAttempted, connect]);
 
   useEffect(() => {
-    console.log('Main page session effect triggered:', { 
-      hasSelectedServer: !!session.selectedServer,
-      selectedServerIdentifier: session.selectedServer?.machineIdentifier,
-      selectedServerName: session.selectedServer?.name 
-    });
     // Only attempt connection once per server selection
     if (session.selectedServer) {
       connectToSelectedServer();
@@ -91,45 +86,6 @@ export default function Home() {
               Automatically create holiday-themed playlists from your Plex TV library
             </p>
           </div>
-
-          {/* DEBUG: Test Button */}
-          <Card>
-            <CardContent className="pt-6">
-              <Button onClick={() => {
-                // Simulate authenticated session with server
-                console.log('DEBUG: Creating test session');
-                const testSession = {
-                  isAuthenticated: true,
-                  user: {
-                    id: 1,
-                    username: 'testuser',
-                    email: 'test@example.com',
-                    title: 'Test User',
-                    thumb: ''
-                  },
-                  authToken: 'test-token',
-                  servers: [
-                    {
-                      name: 'Test Plex Server',
-                      host: 'localhost',
-                      port: 32400,
-                      machineIdentifier: 'test-server-id',
-                      version: '1.40.0',
-                      accessToken: 'test-access-token',
-                      local: true,
-                      owned: true,
-                      home: false,
-                      synced: false
-                    }
-                  ]
-                };
-                localStorage.setItem('plex-auth-session', JSON.stringify(testSession));
-                window.location.reload();
-              }}>
-                DEBUG: Simulate Authenticated User
-              </Button>
-            </CardContent>
-          </Card>
 
           {/* Connection Status */}
           {(isConnected || isConnectingToServer) && session.selectedServer && (
@@ -172,7 +128,12 @@ export default function Home() {
 
           {/* Main Content */}
           {!session.isAuthenticated || !session.selectedServer ? (
-            <PlexOAuthLogin isConnecting={isConnectingToServer} />
+            <PlexOAuthLogin 
+              isConnecting={isConnectingToServer}
+              onSuccess={() => {
+                // Server was selected, no action needed as state should update automatically
+              }}
+            />
           ) : !isConnected && !isConnectingToServer ? (
             <Card>
               <CardHeader>
