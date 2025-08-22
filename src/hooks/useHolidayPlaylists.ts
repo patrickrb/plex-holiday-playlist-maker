@@ -62,11 +62,36 @@ export function useHolidayPlaylists() {
       // Get Wikipedia titles if requested
       const wikiTitles = useWikipedia ? await scrapeWikipediaTitles(false, selectedHolidays) : new Map();
       
-      if (useWikipedia && wikiTitles.size > 0) {
-        console.log('📝 Wikipedia titles found:');
-        wikiTitles.forEach((titles, holiday) => {
-          console.log(`  ${holiday}: ${titles.length} titles`);
-        });
+      if (useWikipedia) {
+        if (wikiTitles.size > 0) {
+          console.log('📝 Wikipedia titles successfully loaded:');
+          wikiTitles.forEach((titles, holiday) => {
+            console.log(`  ${holiday}: ${titles.length} titles`);
+            
+            // Show breakdown of content types for better debugging
+            const movieIndicators = titles.filter((title: string) => 
+              // Look for movie-specific patterns or check if it came from movie-specific URLs
+              !title.includes('Episode') && !title.includes('Special') && !title.includes('Series')
+            );
+            const tvIndicators = titles.filter((title: string) => 
+              title.includes('Episode') || title.includes('Special') || title.includes('Series')
+            );
+            
+            if (movieIndicators.length > 0) {
+              console.log(`    🎬 Movie content: ${movieIndicators.length} titles`);
+              console.log(`    🎬 Sample movies: ${movieIndicators.slice(0, 3).join(', ')}${movieIndicators.length > 3 ? '...' : ''}`);
+            }
+            if (tvIndicators.length > 0) {
+              console.log(`    📺 TV content: ${tvIndicators.length} titles`);
+            }
+          });
+        } else {
+          console.warn('⚠️ Wikipedia scraping enabled but no titles were loaded');
+          console.warn('💡 This is likely due to network restrictions blocking en.wikipedia.org');
+          console.warn('💡 The system will fall back to curated keyword matching only');
+        }
+      } else {
+        console.log('⏭️ Wikipedia scraping disabled - using curated keywords only');
       }
       
       // Create matcher with scraped titles
