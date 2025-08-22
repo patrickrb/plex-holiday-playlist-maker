@@ -39,7 +39,6 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
   const [scanStatus, setScanStatus] = useState<string>('');
   const [scanProgress, setScanProgress] = useState<number>(0);
   const [totalEpisodes, setTotalEpisodes] = useState<number>(0);
-  const [processedEpisodes, setProcessedEpisodes] = useState<number>(0);
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(8);
 
   // Set up activity logger for PlexClient

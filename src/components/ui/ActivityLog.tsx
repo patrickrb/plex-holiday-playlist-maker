@@ -19,12 +19,12 @@ export interface ActivityLogEntry {
 
 interface ActivityLogProps {
   entries: ActivityLogEntry[];
-  currentPhase?: 'scanning' | 'creating' | 'adding';
+  currentPhase?: 'scanning' | 'creating' | 'adding' | null;
   overallProgress?: {
     current: number;
     total: number;
     percentage: number;
-  };
+  } | null;
   className?: string;
 }
 
@@ -34,7 +34,6 @@ export function ActivityLog({
   overallProgress,
   className = "" 
 }: ActivityLogProps) {
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new entries are added
@@ -54,7 +53,7 @@ export function ActivityLog({
     }
   };
 
-  const getPhaseLabel = (phase: string | undefined) => {
+  const getPhaseLabel = (phase: string | null | undefined) => {
     switch (phase) {
       case 'scanning': return 'Scanning Episodes';
       case 'creating': return 'Creating Playlists';

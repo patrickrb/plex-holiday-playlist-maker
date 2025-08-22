@@ -170,7 +170,7 @@ export class PlexClient {
       
       const validPlaylists = playlists.map((playlist: { key: string; title: string; summary?: string; leafCount?: number }) => {
         // Extract just the ID from the key path
-        const keyParts = playlist.key.split('/').filter(part => part.length > 0);
+        const keyParts = playlist.key.split('/').filter((part: string) => part.length > 0);
         
         let cleanKey = '';
         if (keyParts.length >= 2 && keyParts[0] === 'playlists') {
@@ -280,7 +280,7 @@ export class PlexClient {
 
       // Extract just the playlist ID from the full path
       // rawPlaylistKey might be like "/playlists/71567/items" or "/playlists/71567" or just "71567"
-      const keyParts = rawPlaylistKey.split('/').filter(part => part.length > 0);
+      const keyParts = rawPlaylistKey.split('/').filter((part: string) => part.length > 0);
       
       let playlistKey = '';
       if (keyParts.length >= 2 && keyParts[0] === 'playlists') {
