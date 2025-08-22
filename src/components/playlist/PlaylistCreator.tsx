@@ -12,7 +12,7 @@ import { usePlex } from '@/contexts/PlexContext';
 import { useHolidayPlaylists } from '@/hooks/useHolidayPlaylists';
 import { ActivityLog } from '@/components/ui/ActivityLog';
 import { PlexClient } from '@/lib/plex/client';
-import { PlaylistPreview, PlexLibrary, PlexMedia, Holiday } from '@/types';
+import { PlaylistPreview, PlexLibrary, PlexMedia, Holiday, isPlexEpisode } from '@/types';
 import { DEFAULT_TV_LIBRARY, DEFAULT_MOVIE_LIBRARY } from '@/lib/holiday/config';
 
 interface PlaylistCreatorProps {
@@ -585,53 +585,55 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
       "Valentine's": '💝'
     };
 
-    // Initialize selected episodes if not already done
-    if (selectedEpisodes.size === 0 && playlistPreviews.length > 0) {
+    // Initialize selected media if not already done
+    if (selectedMedia.size === 0 && playlistPreviews.length > 0) {
       const newSelected = new Map<string, boolean>();
       playlistPreviews.forEach(preview => {
-        preview.episodes.forEach(episode => {
-          newSelected.set(episode.guid, true); // Default to selected
+        [...preview.episodes, ...preview.movies].forEach(item => {
+          newSelected.set(item.guid, true); // Default to selected
         });
       });
-      setSelectedEpisodes(newSelected);
+      setSelectedMedia(newSelected);
     }
 
     const getSelectedCount = (holiday: Holiday) => {
       const preview = playlistPreviews.find(p => p.holiday === holiday);
       if (!preview) return 0;
-      return preview.episodes.filter(ep => selectedEpisodes.get(ep.guid) === true).length;
+      const allMedia = [...preview.episodes, ...preview.movies];
+      return allMedia.filter(item => selectedMedia.get(item.guid) === true).length;
     };
 
-    const toggleEpisode = (episodeGuid: string) => {
-      const newSelected = new Map(selectedEpisodes);
-      newSelected.set(episodeGuid, !newSelected.get(episodeGuid));
-      setSelectedEpisodes(newSelected);
+    const toggleMedia = (mediaGuid: string) => {
+      const newSelected = new Map(selectedMedia);
+      newSelected.set(mediaGuid, !newSelected.get(mediaGuid));
+      setSelectedMedia(newSelected);
     };
 
     const toggleAllForHoliday = (holiday: Holiday, selectAll: boolean) => {
       const preview = playlistPreviews.find(p => p.holiday === holiday);
       if (!preview) return;
       
-      const newSelected = new Map(selectedEpisodes);
-      preview.episodes.forEach(episode => {
-        newSelected.set(episode.guid, selectAll);
+      const newSelected = new Map(selectedMedia);
+      const allMedia = [...preview.episodes, ...preview.movies];
+      allMedia.forEach(item => {
+        newSelected.set(item.guid, selectAll);
       });
-      setSelectedEpisodes(newSelected);
+      setSelectedMedia(newSelected);
     };
 
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Review Episodes</CardTitle>
+          <CardTitle>Review Media</CardTitle>
           <CardDescription>
-            Select which episodes to include in your holiday playlists
+            Select which episodes and movies to include in your holiday playlists
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {playlistPreviews.length === 0 ? (
             <Alert>
               <AlertDescription>
-                No holiday episodes found in your library. Try enabling Wikipedia scraping or add more TV shows.
+                No holiday content found in your libraries. Try enabling Wikipedia scraping or add more content.
               </AlertDescription>
             </Alert>
           ) : (
@@ -666,31 +668,44 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
                   </div>
                   
                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {preview.episodes.map((episode) => (
-                      <div key={episode.guid} className="flex items-start space-x-3">
-                        <Checkbox
-                          id={episode.guid}
-                          checked={selectedEpisodes.get(episode.guid) === true}
-                          onCheckedChange={() => toggleEpisode(episode.guid)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <Label 
-                            htmlFor={episode.guid} 
-                            className="cursor-pointer block"
-                          >
-                            <div className="font-medium">{episode.grandparentTitle}</div>
-                            <div className="text-sm text-gray-600">
-                              S{episode.seasonNumber}E{episode.index}: {episode.title}
-                            </div>
-                            {episode.summary && (
-                              <div className="text-xs text-gray-500 mt-1 line-clamp-2">
-                                {episode.summary}
-                              </div>
-                            )}
-                          </Label>
+                    {[...preview.episodes, ...preview.movies].map((item) => {
+                      return (
+                        <div key={item.guid} className="flex items-start space-x-3">
+                          <Checkbox
+                            id={item.guid}
+                            checked={selectedMedia.get(item.guid) === true}
+                            onCheckedChange={() => toggleMedia(item.guid)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <Label 
+                              htmlFor={item.guid} 
+                              className="cursor-pointer block"
+                            >
+                              {isPlexEpisode(item) ? (
+                                <>
+                                  <div className="font-medium">📺 {item.grandparentTitle}</div>
+                                  <div className="text-sm text-gray-600">
+                                    S{item.seasonNumber}E{item.index}: {item.title}
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="font-medium">🎬 {item.title}</div>
+                                  <div className="text-sm text-gray-600">
+                                    Movie{item.year ? ` (${item.year})` : ''}
+                                  </div>
+                                </>
+                              )}
+                              {item.summary && (
+                                <div className="text-xs text-gray-500 mt-1 line-clamp-2">
+                                  {item.summary}
+                                </div>
+                              )}
+                            </Label>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -703,7 +718,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
             </Button>
             <Button 
               onClick={createSelectedPlaylists}
-              disabled={Array.from(selectedEpisodes.values()).every(selected => !selected)}
+              disabled={Array.from(selectedMedia.values()).every(selected => !selected)}
               className="flex-1"
             >
               Create/Update Playlists
