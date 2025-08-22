@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { PlexClient } from '@/lib/plex/client';
 import { PlexServer, PlexConnection, PlexLibrary, PlexEpisode, PlexPlaylist } from '@/types';
+import { ActivityLogEntry } from '@/components/ui/ActivityLog';
 
 interface PlexContextType {
   client: PlexClient | null;
@@ -19,6 +20,14 @@ interface PlexContextType {
   updatePlaylist: (playlistKey: string, newEpisodes: PlexEpisode[], existingEpisodes: PlexEpisode[]) => Promise<boolean>;
   getServerInfo: () => Promise<{ name: string; version: string } | null>;
   restoreConnection: () => Promise<void>;
+  // Activity logging
+  activityLog: ActivityLogEntry[];
+  currentPhase: 'scanning' | 'creating' | 'adding' | null;
+  overallProgress: { current: number; total: number; percentage: number } | null;
+  addLogEntry: (type: ActivityLogEntry['type'], message: string, phase?: ActivityLogEntry['phase'], progress?: ActivityLogEntry['progress']) => void;
+  setCurrentPhase: (phase: 'scanning' | 'creating' | 'adding' | null) => void;
+  setOverallProgress: (progress: { current: number; total: number; percentage: number } | null) => void;
+  clearActivityLog: () => void;
 }
 
 const PlexContext = createContext<PlexContextType | undefined>(undefined);
@@ -28,6 +37,11 @@ export function PlexProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Activity logging state
+  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [currentPhase, setCurrentPhase] = useState<'scanning' | 'creating' | 'adding' | null>(null);
+  const [overallProgress, setOverallProgress] = useState<{ current: number; total: number; percentage: number } | null>(null);
 
   const connect = useCallback(async (server: PlexServer | PlexConnection) => {
     console.log('🔄 PlexContext: Starting connection attempt', { server });
@@ -139,6 +153,31 @@ export function PlexProvider({ children }: { children: React.ReactNode }) {
     }
   }, [connect]);
 
+  // Activity logging functions
+  const addLogEntry = useCallback((
+    type: ActivityLogEntry['type'], 
+    message: string, 
+    phase?: ActivityLogEntry['phase'],
+    progress?: ActivityLogEntry['progress']
+  ) => {
+    const entry: ActivityLogEntry = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      timestamp: new Date(),
+      type,
+      message,
+      phase,
+      progress
+    };
+    
+    setActivityLog(prev => [...prev, entry]);
+  }, []);
+
+  const clearActivityLog = useCallback(() => {
+    setActivityLog([]);
+    setCurrentPhase(null);
+    setOverallProgress(null);
+  }, []);
+
   const value: PlexContextType = {
     client,
     isConnected,
@@ -154,6 +193,14 @@ export function PlexProvider({ children }: { children: React.ReactNode }) {
     updatePlaylist,
     getServerInfo,
     restoreConnection,
+    // Activity logging
+    activityLog,
+    currentPhase,
+    overallProgress,
+    addLogEntry,
+    setCurrentPhase,
+    setOverallProgress,
+    clearActivityLog,
   };
 
   return (

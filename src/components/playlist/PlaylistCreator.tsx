@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { usePlex } from '@/contexts/PlexContext';
 import { useHolidayPlaylists } from '@/hooks/useHolidayPlaylists';
+import { ActivityLog } from '@/components/ui/ActivityLog';
+import { PlexClient } from '@/lib/plex/client';
 import { PlaylistPreview, PlexLibrary, PlexEpisode, Holiday } from '@/types';
 import { DEFAULT_TV_LIBRARY } from '@/lib/holiday/config';
 
@@ -18,7 +20,10 @@ interface PlaylistCreatorProps {
 }
 
 export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
-  const { getLibraries, getEpisodes, getPlaylists, getPlaylistItems, createPlaylist, updatePlaylist, isConnected } = usePlex();
+  const { 
+    getLibraries, getEpisodes, getPlaylists, getPlaylistItems, createPlaylist, updatePlaylist, isConnected,
+    activityLog, currentPhase, overallProgress, addLogEntry, setCurrentPhase, setOverallProgress, clearActivityLog
+  } = usePlex();
   console.log('🔄 PlaylistCreator: Component state', { isConnected });
   const { generatePlaylistPreviews, isAnalyzing, isScrapingWiki, error } = useHolidayPlaylists();
   
@@ -36,6 +41,15 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
   const [totalEpisodes, setTotalEpisodes] = useState<number>(0);
   const [processedEpisodes, setProcessedEpisodes] = useState<number>(0);
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(8);
+
+  // Set up activity logger for PlexClient
+  useEffect(() => {
+    PlexClient.setActivityLogger({
+      addLogEntry,
+      setOverallProgress,
+      setCurrentPhase
+    });
+  }, [addLogEntry, setOverallProgress, setCurrentPhase]);
 
   const loadLibraries = useCallback(async () => {
     setIsLoadingLibraries(true);
@@ -72,21 +86,30 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
     setStep('analyze');
     setScanProgress(0);
     setScanStatus('Initializing scan...');
+    clearActivityLog();
+    setCurrentPhase('scanning');
+    
+    addLogEntry('info', `Starting episode analysis for ${Array.from(selectedHolidays).join(', ')}`, 'scanning');
     console.log('🔍 Starting episode analysis for selected holidays:', Array.from(selectedHolidays));
     
     try {
       // Phase 1: Load episodes from selected library
       setScanStatus('Loading episodes from Plex library...');
       setScanProgress(10);
+      setOverallProgress({ current: 1, total: 5, percentage: 20 });
+      addLogEntry('info', 'Loading episodes from Plex library...', 'scanning');
       console.log('📚 Loading episodes from library:', selectedLibrary);
       
       const episodes = await getEpisodes(selectedLibrary);
       setTotalEpisodes(episodes.length);
+      addLogEntry('success', `Loaded ${episodes.length} episodes from library`, 'scanning');
       console.log(`📺 Loaded ${episodes.length} episodes from library`);
       
       // Phase 2: Get existing playlists
       setScanStatus('Checking existing holiday playlists...');
       setScanProgress(20);
+      setOverallProgress({ current: 2, total: 5, percentage: 40 });
+      addLogEntry('info', 'Checking for existing holiday playlists...', 'scanning');
       console.log('📋 Checking for existing holiday playlists');
       
       const existingPlaylists = await getPlaylists();
@@ -100,23 +123,31 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
           playlistMap.set(playlist.title, items);
           console.log(`  └── Contains ${items.length} episodes`);
           playlistCount++;
+          addLogEntry('info', `Found playlist "${playlist.title}" with ${items.length} episodes`, 'scanning');
         }
       }
+      addLogEntry('success', `Found ${playlistCount} existing holiday playlists`, 'scanning');
       console.log(`📊 Found ${playlistCount} existing holiday playlists`);
       
       // Phase 3: Wikipedia scraping (if enabled)
       if (useWikipedia) {
         setScanStatus('Scraping Wikipedia for holiday episodes...');
         setScanProgress(30);
+        setOverallProgress({ current: 3, total: 5, percentage: 60 });
+        addLogEntry('info', 'Scraping Wikipedia for holiday episodes...', 'scanning');
         console.log('🌐 Starting Wikipedia scraping for holiday episodes');
       } else {
         setScanProgress(40);
+        setOverallProgress({ current: 3, total: 5, percentage: 60 });
+        addLogEntry('info', 'Skipping Wikipedia scraping (disabled)', 'scanning');
         console.log('⏭️ Skipping Wikipedia scraping (disabled)');
       }
       
       // Phase 4: Episode analysis
       setScanStatus('Analyzing episodes for holiday matches...');
       setScanProgress(50);
+      setOverallProgress({ current: 4, total: 5, percentage: 80 });
+      addLogEntry('info', `Analyzing ${episodes.length} episodes for holiday matches...`, 'scanning');
       console.log('🔍 Starting episode analysis phase');
       console.log(`📺 Analyzing ${episodes.length} episodes for holidays:`, Array.from(selectedHolidays));
       
@@ -126,31 +157,47 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
       // Phase 5: Complete
       setScanStatus('Analysis complete!');
       setScanProgress(100);
+      setOverallProgress({ current: 5, total: 5, percentage: 100 });
+      setCurrentPhase(null);
       
       console.log('✅ Analysis complete! Results:');
+      let totalEpisodesFound = 0;
       previews.forEach(preview => {
+        totalEpisodesFound += preview.episodes.length;
+        addLogEntry('success', `${preview.holiday}: ${preview.episodes.length} episodes found (${preview.newCount} new)`, 'scanning');
         console.log(`🎭 ${preview.holiday}: ${preview.episodes.length} episodes found (${preview.newCount} new)`);
         preview.episodes.forEach(ep => {
           console.log(`  📺 ${ep.grandparentTitle} - S${ep.seasonNumber}E${ep.index}: ${ep.title}`);
         });
       });
+      addLogEntry('success', `Analysis complete! Found ${totalEpisodesFound} holiday episodes total`, 'scanning');
       
       setPlaylistPreviews(previews);
       setStep('confirm');
     } catch (err) {
       console.error('❌ Failed to analyze library:', err);
+      addLogEntry('error', `Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'scanning');
       setScanStatus('Analysis failed');
+      setCurrentPhase(null);
     }
   };
 
   const createSelectedPlaylists = async () => {
     setIsCreatingPlaylists(true);
     setStep('create');
+    setCurrentPhase('creating');
     
     const totalSelected = Array.from(selectedEpisodes.values()).filter(Boolean).length;
+    addLogEntry('info', `Starting playlist creation with ${totalSelected} selected episodes`, 'creating');
     console.log(`🎵 Starting playlist creation with ${totalSelected} selected episodes`);
     
     try {
+      const totalPlaylists = playlistPreviews.filter(preview => 
+        preview.episodes.some(ep => selectedEpisodes.get(ep.guid) === true)
+      ).length;
+      
+      let currentPlaylist = 0;
+      
       for (const preview of playlistPreviews) {
         // Get only the selected episodes for this holiday
         const selectedEpisodesForHoliday = preview.episodes.filter(ep => 
@@ -160,31 +207,49 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
         console.log(`🎭 Processing ${preview.holiday}: ${selectedEpisodesForHoliday.length} selected episodes`);
         
         if (selectedEpisodesForHoliday.length > 0) {
+          currentPlaylist++;
+          setOverallProgress({ 
+            current: currentPlaylist, 
+            total: totalPlaylists, 
+            percentage: Math.round((currentPlaylist / totalPlaylists) * 100) 
+          });
+          setCurrentPhase('adding');
+          
           // Check if playlist already exists
           const existingPlaylists = await getPlaylists();
           const existing = existingPlaylists.find(p => p.title === preview.name);
           
           if (existing) {
+            addLogEntry('info', `Updating existing playlist: ${preview.name}`, 'adding');
             console.log(`📝 Updating existing playlist: ${preview.name}`);
             const existingItems = await getPlaylistItems(existing.key);
             console.log(`  └── Current playlist has ${existingItems.length} episodes`);
             
             await updatePlaylist(existing.key, selectedEpisodesForHoliday, existingItems);
+            addLogEntry('success', `Updated playlist "${preview.name}" with ${selectedEpisodesForHoliday.length} episodes`, 'adding');
             console.log(`  ✅ Updated playlist with ${selectedEpisodesForHoliday.length} episodes`);
           } else {
+            addLogEntry('info', `Creating new playlist: ${preview.name}`, 'creating');
             console.log(`🆕 Creating new playlist: ${preview.name}`);
             await createPlaylist(preview.name, selectedEpisodesForHoliday);
+            addLogEntry('success', `Created playlist "${preview.name}" with ${selectedEpisodesForHoliday.length} episodes`, 'creating');
             console.log(`  ✅ Created playlist with ${selectedEpisodesForHoliday.length} episodes`);
           }
         } else {
+          addLogEntry('info', `Skipping ${preview.holiday}: no episodes selected`, 'creating');
           console.log(`⏭️ Skipping ${preview.holiday}: no episodes selected`);
         }
       }
       
+      setOverallProgress({ current: totalPlaylists, total: totalPlaylists, percentage: 100 });
+      setCurrentPhase(null);
+      addLogEntry('success', 'Playlist creation complete!', 'creating');
       console.log('🎉 Playlist creation complete!');
       onPlaylistsCreated?.();
     } catch (err) {
+      addLogEntry('error', `Failed to create playlists: ${err instanceof Error ? err.message : 'Unknown error'}`, 'creating');
       console.error('❌ Failed to create playlists:', err);
+      setCurrentPhase(null);
     } finally {
       setIsCreatingPlaylists(false);
     }
@@ -376,36 +441,45 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
 
   if (step === 'analyze') {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Analyzing Episodes</CardTitle>
-          <CardDescription>
-            Scanning your library for holiday episodes
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>{scanStatus}</span>
-              <span>{scanProgress}%</span>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Analyzing Episodes</CardTitle>
+            <CardDescription>
+              Scanning your library for holiday episodes
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>{scanStatus}</span>
+                <span>{scanProgress}%</span>
+              </div>
+              <Progress value={scanProgress} className="w-full" />
             </div>
-            <Progress value={scanProgress} className="w-full" />
-          </div>
-          
-          {totalEpisodes > 0 && (
-            <div className="text-sm text-gray-600">
-              <p>📚 Library: {libraries.find(l => l.key === selectedLibrary)?.title}</p>
-              <p>📺 Total episodes: {totalEpisodes.toLocaleString()}</p>
-              <p>🎭 Selected holidays: {Array.from(selectedHolidays).join(', ')}</p>
-              {useWikipedia && <p>🌐 Wikipedia scraping: Enabled</p>}
-            </div>
-          )}
+            
+            {totalEpisodes > 0 && (
+              <div className="text-sm text-gray-600">
+                <p>📚 Library: {libraries.find(l => l.key === selectedLibrary)?.title}</p>
+                <p>📺 Total episodes: {totalEpisodes.toLocaleString()}</p>
+                <p>🎭 Selected holidays: {Array.from(selectedHolidays).join(', ')}</p>
+                {useWikipedia && <p>🌐 Wikipedia scraping: Enabled</p>}
+              </div>
+            )}
 
-          <div className="flex items-center justify-center py-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <ActivityLog 
+          entries={activityLog}
+          currentPhase={currentPhase}
+          overallProgress={overallProgress}
+          className="w-full"
+        />
+      </div>
     );
   }
 
@@ -548,30 +622,45 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
 
   if (step === 'create') {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Creating Playlists</CardTitle>
-          <CardDescription>
-            {isCreatingPlaylists ? 'Creating your holiday playlists...' : 'Playlists created successfully!'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isCreatingPlaylists ? (
-            <Progress value={75} className="w-full" />
-          ) : (
-            <div className="space-y-4">
-              <Alert>
-                <AlertDescription>
-                  Your holiday playlists have been created/updated successfully!
-                </AlertDescription>
-              </Alert>
-              <Button onClick={resetAnalysis} className="w-full">
-                Create More Playlists
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Creating Playlists</CardTitle>
+            <CardDescription>
+              {isCreatingPlaylists ? 'Creating your holiday playlists...' : 'Playlists created successfully!'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isCreatingPlaylists ? (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>{currentPhase === 'creating' ? 'Creating playlists...' : currentPhase === 'adding' ? 'Adding episodes...' : 'Processing...'}</span>
+                  <span>{overallProgress ? `${overallProgress.current}/${overallProgress.total}` : ''}</span>
+                </div>
+                <Progress value={overallProgress?.percentage || 0} className="w-full" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <Alert>
+                  <AlertDescription>
+                    Your holiday playlists have been created/updated successfully!
+                  </AlertDescription>
+                </Alert>
+                <Button onClick={resetAnalysis} className="w-full">
+                  Create More Playlists
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <ActivityLog 
+          entries={activityLog}
+          currentPhase={currentPhase}
+          overallProgress={overallProgress}
+          className="w-full"
+        />
+      </div>
     );
   }
 
