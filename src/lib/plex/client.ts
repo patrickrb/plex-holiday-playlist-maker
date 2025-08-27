@@ -1,4 +1,4 @@
-import { PlexServer, PlexConnection, PlexLibrary, PlexEpisode, PlexMovie, PlexMedia, PlexPlaylist } from '@/types';
+import { PlexServer, PlexConnection, PlexLibrary, PlexEpisode, PlexMovie, PlexMedia, PlexPlaylist, PlexCollection } from '@/types';
 
 // Create a global activity logger that can be used by PlexClient
 interface ActivityLogger {
@@ -572,6 +572,227 @@ export class PlexClient {
       return await this.addToPlaylist(playlistKey, mediaToAdd);
     } catch (error) {
       console.error('Failed to update playlist:', error);
+      return false;
+    }
+  }
+
+  // Collection methods
+  async getCollections(libraryKey?: string): Promise<PlexCollection[]> {
+    try {
+      let path = '/library/collections';
+      if (libraryKey) {
+        path = `/library/sections/${libraryKey}/collections`;
+      }
+      
+      const data = await this.makeRequest(path);
+      const collections = data?.MediaContainer?.Metadata || [];
+      
+      return collections.map((collection: { key: string; title: string; summary?: string; childCount?: number; librarySectionKey?: string }) => ({
+        key: collection.key,
+        title: collection.title,
+        summary: collection.summary,
+        childCount: collection.childCount || 0,
+        libraryKey: collection.librarySectionKey || libraryKey || '',
+      }));
+    } catch (error) {
+      console.error('Failed to get collections:', error);
+      return [];
+    }
+  }
+
+  async getCollectionItems(collectionKey: string): Promise<PlexMedia[]> {
+    try {
+      console.log(`📋 PlexClient: Getting collection items for key: "${collectionKey}"`);
+      
+      const data = await this.makeRequest(`/library/collections/${collectionKey}/children`);
+      const items = data?.MediaContainer?.Metadata || [];
+      
+      return items
+        .filter((item: { guid: string }) => item.guid)
+        .map((item: { guid: string; key: string; title?: string; summary?: string; grandparentTitle?: string; parentIndex?: string; index?: string; thumb?: string; year?: number; addedAt?: number }) => {
+          // Check if this is an episode (has grandparentTitle) or a movie
+          if (item.grandparentTitle) {
+            // This is an episode
+            return {
+              guid: item.guid,
+              key: item.key,
+              title: item.title || '',
+              summary: item.summary || '',
+              grandparentTitle: item.grandparentTitle || '',
+              seasonNumber: parseInt(item.parentIndex || '0') || 0,
+              index: parseInt(item.index || '0') || 0,
+              thumb: item.thumb,
+              year: item.year,
+              addedAt: item.addedAt,
+            } as PlexEpisode;
+          } else {
+            // This is a movie
+            return {
+              guid: item.guid,
+              key: item.key,
+              title: item.title || '',
+              summary: item.summary || '',
+              year: item.year,
+              thumb: item.thumb,
+              addedAt: item.addedAt,
+            } as PlexMovie;
+          }
+        });
+    } catch (error) {
+      console.error('Failed to get collection items:', error);
+      return [];
+    }
+  }
+
+  async createCollection(name: string, libraryKey: string, media: PlexMedia[]): Promise<boolean> {
+    try {
+      console.log(`📚 PlexClient: Creating collection "${name}" in library ${libraryKey} with ${media.length} items`);
+      
+      if (media.length === 0) {
+        throw new Error('Cannot create collection with no media');
+      }
+
+      // Extract metadata keys from media items
+      const mediaKeys = media.map(item => {
+        const key = item.key.split('/').pop();
+        if (!key) {
+          throw new Error(`Invalid media key: ${item.key}`);
+        }
+        return key;
+      });
+
+      console.log('📝 PlexClient: Collection creation parameters:', {
+        name,
+        libraryKey,
+        mediaCount: media.length,
+        mediaKeys: mediaKeys.slice(0, 3), // Log first 3 for debugging
+      });
+
+      // Create the collection by adding the first item
+      const data = await this.makeRequest('/library/collections', 'POST', {
+        type: 'collection',
+        title: name,
+        smart: 0,
+        sectionId: libraryKey,
+        uri: `/library/metadata/${mediaKeys[0]}`,
+      });
+
+      console.log('📋 PlexClient: Collection creation response:', data);
+      
+      const collectionKey = data?.MediaContainer?.Metadata?.[0]?.key;
+      if (!collectionKey) {
+        console.error('❌ PlexClient: No collection key in response:', data);
+        throw new Error('Failed to get collection key from creation response');
+      }
+
+      console.log(`✅ PlexClient: Collection created with key: "${collectionKey}"`);
+
+      // Add remaining media if there are more than one
+      if (media.length > 1) {
+        console.log(`➕ PlexClient: Adding ${media.length - 1} remaining items to collection`);
+        const remainingMedia = media.slice(1);
+        await this.addToCollection(collectionKey, remainingMedia);
+      }
+
+      console.log(`🎉 PlexClient: Successfully created collection "${name}" with ${media.length} items`);
+      return true;
+    } catch (error) {
+      console.error('❌ PlexClient: Failed to create collection:', error);
+      return false;
+    }
+  }
+
+  async addToCollection(collectionKey: string, media: PlexMedia[]): Promise<boolean> {
+    try {
+      console.log(`➕ PlexClient: Adding ${media.length} items to collection`, {
+        collectionKey,
+        fullPath: `/library/collections/${collectionKey}/items`
+      });
+      
+      if (media.length === 0) {
+        console.log('⏭️ PlexClient: No media to add, skipping');
+        return true;
+      }
+
+      // Extract metadata keys from media items
+      const mediaKeys = media.map(item => {
+        const key = item.key.split('/').pop();
+        if (!key) {
+          throw new Error(`Invalid media key: ${item.key}`);
+        }
+        return `/library/metadata/${key}`;
+      });
+
+      console.log(`📝 PlexClient: Adding ${media.length} items to collection individually`);
+      globalActivityLogger.addLogEntry?.('info', `Adding ${media.length} items to collection`, 'adding');
+
+      let successCount = 0;
+      for (let i = 0; i < media.length; i++) {
+        const item = media[i];
+        const uri = mediaKeys[i];
+        
+        const currentProgress = {
+          current: i + 1,
+          total: media.length,
+          percentage: Math.round(((i + 1) / media.length) * 100)
+        };
+        
+        globalActivityLogger.addLogEntry?.('info', 
+          `Adding item ${i + 1}/${media.length}: ${item.title}`, 
+          'adding', 
+          currentProgress
+        );
+        console.log(`📦 PlexClient: Adding item ${i + 1}/${media.length}: ${item.title}`);
+        
+        try {
+          const response = await this.makeRequest(`/library/collections/${collectionKey}/items`, 'PUT', {
+            uri: uri,
+          });
+          
+          console.log(`📋 PlexClient: Collection item ${i + 1} response:`, response);
+          successCount++;
+          
+          globalActivityLogger.addLogEntry?.('success', 
+            `Added "${item.title}" to collection`, 
+            'adding'
+          );
+          console.log(`✅ PlexClient: Item ${i + 1} added to collection successfully`);
+        } catch (error) {
+          globalActivityLogger.addLogEntry?.('error', 
+            `Failed to add "${item.title}" to collection: ${error}`, 
+            'adding'
+          );
+          console.error(`❌ PlexClient: Failed to add item ${i + 1} to collection:`, error);
+        }
+      }
+      
+      globalActivityLogger.addLogEntry?.('success', 
+        `Collection additions complete. ${successCount}/${media.length} items processed successfully`, 
+        'adding'
+      );
+      console.log(`📊 PlexClient: Collection additions complete. ${successCount}/${media.length} items processed successfully.`);
+
+      console.log(`🎉 PlexClient: Successfully added ${successCount} items to collection (${media.length} requested)`);
+      return successCount > 0;
+    } catch (error) {
+      console.error('❌ PlexClient: Failed to add to collection:', error);
+      return false;
+    }
+  }
+
+  async updateCollection(collectionKey: string, newMedia: PlexMedia[], existingMedia: PlexMedia[]): Promise<boolean> {
+    try {
+      // Find media to add (not already in collection)
+      const existingGuids = new Set(existingMedia.map(item => item.guid));
+      const mediaToAdd = newMedia.filter(item => !existingGuids.has(item.guid));
+
+      if (mediaToAdd.length === 0) {
+        return true; // Nothing to add
+      }
+
+      return await this.addToCollection(collectionKey, mediaToAdd);
+    } catch (error) {
+      console.error('Failed to update collection:', error);
       return false;
     }
   }

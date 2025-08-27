@@ -50,6 +50,15 @@ export interface PlexPlaylist {
   items?: PlexMedia[];
 }
 
+export interface PlexCollection {
+  key: string;
+  title: string;
+  summary?: string;
+  childCount: number;
+  libraryKey: string; // The library section this collection belongs to
+  items?: PlexMedia[];
+}
+
 export type Holiday = 'Halloween' | 'Thanksgiving' | 'Christmas' | "Valentine's";
 
 export interface HolidayMatch {
@@ -66,6 +75,18 @@ export interface PlaylistPreview {
   existingCount?: number;
   newCount: number;
 }
+
+export interface CollectionPreview {
+  holiday: Holiday;
+  name: string;
+  episodes: PlexEpisode[];
+  movies: PlexMovie[];
+  existingCount?: number;
+  newCount: number;
+  libraryKey: string; // The library this collection will be created in
+}
+
+export type ContentType = 'playlist' | 'collection';
 
 export interface WikiTitle {
   title: string;
