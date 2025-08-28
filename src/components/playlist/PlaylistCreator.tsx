@@ -12,7 +12,7 @@ import { usePlex } from '@/contexts/PlexContext';
 import { useHolidayPlaylists } from '@/hooks/useHolidayPlaylists';
 import { ActivityLog } from '@/components/ui/ActivityLog';
 import { PlexClient } from '@/lib/plex/client';
-import { PlaylistPreview, PlexLibrary, PlexMedia, Holiday, isPlexEpisode } from '@/types';
+import { PlaylistPreview, PlexLibrary, PlexMedia, Holiday, ContentType, isPlexEpisode } from '@/types';
 import { DEFAULT_TV_LIBRARY, DEFAULT_MOVIE_LIBRARY } from '@/lib/holiday/config';
 
 interface PlaylistCreatorProps {
@@ -21,7 +21,8 @@ interface PlaylistCreatorProps {
 
 export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
   const { 
-    getLibraries, getEpisodes, getMovies, getPlaylists, getPlaylistItems, createPlaylist, updatePlaylist, isConnected,
+    getLibraries, getEpisodes, getMovies, getPlaylists, getPlaylistItems, createPlaylist, updatePlaylist, 
+    getCollections, getCollectionItems, createCollection, updateCollection, isConnected,
     activityLog, currentPhase, overallProgress, addLogEntry, setCurrentPhase, setOverallProgress, clearActivityLog
   } = usePlex();
   console.log('🔄 PlaylistCreator: Component state', { isConnected });
@@ -30,6 +31,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
   const [libraries, setLibraries] = useState<PlexLibrary[]>([]);
   const [selectedLibraries, setSelectedLibraries] = useState<Set<string>>(new Set());
   const [playlistPreviews, setPlaylistPreviews] = useState<PlaylistPreview[]>([]);
+  const [contentType, setContentType] = useState<ContentType>('playlist');
   const [useWikipedia, setUseWikipedia] = useState(true);
   const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
   const [isCreatingPlaylists, setIsCreatingPlaylists] = useState(false);
@@ -265,25 +267,77 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
           });
           setCurrentPhase('adding');
           
-          // Check if playlist already exists
-          const existingPlaylists = await getPlaylists();
-          const existing = existingPlaylists.find(p => p.title === preview.name);
-          
-          if (existing) {
-            addLogEntry('info', `Updating existing playlist: ${preview.name}`, 'adding');
-            console.log(`📝 Updating existing playlist: ${preview.name}`);
-            const existingItems = await getPlaylistItems(existing.key);
-            console.log(`  └── Current playlist has ${existingItems.length} items`);
+          if (contentType === 'playlist') {
+            // Handle playlist creation/update
+            const existingPlaylists = await getPlaylists();
+            const existing = existingPlaylists.find(p => p.title === preview.name);
             
-            await updatePlaylist(existing.key, selectedMediaForHoliday, existingItems);
-            addLogEntry('success', `Updated playlist "${preview.name}" with ${selectedMediaForHoliday.length} items`, 'adding');
-            console.log(`  ✅ Updated playlist with ${selectedMediaForHoliday.length} items`);
+            if (existing) {
+              addLogEntry('info', `Updating existing playlist: ${preview.name}`, 'adding');
+              console.log(`📝 Updating existing playlist: ${preview.name}`);
+              const existingItems = await getPlaylistItems(existing.key);
+              console.log(`  └── Current playlist has ${existingItems.length} items`);
+              
+              await updatePlaylist(existing.key, selectedMediaForHoliday, existingItems);
+              addLogEntry('success', `Updated playlist "${preview.name}" with ${selectedMediaForHoliday.length} items`, 'adding');
+              console.log(`  ✅ Updated playlist with ${selectedMediaForHoliday.length} items`);
+            } else {
+              addLogEntry('info', `Creating new playlist: ${preview.name}`, 'creating');
+              console.log(`🆕 Creating new playlist: ${preview.name}`);
+              await createPlaylist(preview.name, selectedMediaForHoliday);
+              addLogEntry('success', `Created playlist "${preview.name}" with ${selectedMediaForHoliday.length} items`, 'creating');
+              console.log(`  ✅ Created playlist with ${selectedMediaForHoliday.length} items`);
+            }
           } else {
-            addLogEntry('info', `Creating new playlist: ${preview.name}`, 'creating');
-            console.log(`🆕 Creating new playlist: ${preview.name}`);
-            await createPlaylist(preview.name, selectedMediaForHoliday);
-            addLogEntry('success', `Created playlist "${preview.name}" with ${selectedMediaForHoliday.length} items`, 'creating');
-            console.log(`  ✅ Created playlist with ${selectedMediaForHoliday.length} items`);
+            // Handle collection creation/update - need to determine which library to use
+            const episodeLibraries = selectedEpisodesForHoliday.length > 0 ? 
+              Array.from(selectedLibraries).filter(libKey => 
+                libraries.find(lib => lib.key === libKey)?.type === 'show'
+              ) : [];
+            const movieLibraries = selectedMoviesForHoliday.length > 0 ?
+              Array.from(selectedLibraries).filter(libKey => 
+                libraries.find(lib => lib.key === libKey)?.type === 'movie'
+              ) : [];
+            
+            // For collections, we create one per library type if we have mixed content
+            const librariesToProcess = [];
+            if (episodeLibraries.length > 0 && selectedEpisodesForHoliday.length > 0) {
+              librariesToProcess.push({ 
+                key: episodeLibraries[0], 
+                media: selectedEpisodesForHoliday,
+                suffix: episodeLibraries.length > 1 || movieLibraries.length > 0 ? ' (TV Shows)' : ''
+              });
+            }
+            if (movieLibraries.length > 0 && selectedMoviesForHoliday.length > 0) {
+              librariesToProcess.push({ 
+                key: movieLibraries[0], 
+                media: selectedMoviesForHoliday,
+                suffix: movieLibraries.length > 1 || episodeLibraries.length > 0 ? ' (Movies)' : ''
+              });
+            }
+            
+            for (const { key: libraryKey, media: libraryMedia, suffix } of librariesToProcess) {
+              const collectionName = preview.name + suffix;
+              const existingCollections = await getCollections(libraryKey);
+              const existing = existingCollections.find(c => c.title === collectionName);
+              
+              if (existing) {
+                addLogEntry('info', `Updating existing collection: ${collectionName}`, 'adding');
+                console.log(`📝 Updating existing collection: ${collectionName}`);
+                const existingItems = await getCollectionItems(existing.key);
+                console.log(`  └── Current collection has ${existingItems.length} items`);
+                
+                await updateCollection(existing.key, libraryMedia, existingItems);
+                addLogEntry('success', `Updated collection "${collectionName}" with ${libraryMedia.length} items`, 'adding');
+                console.log(`  ✅ Updated collection with ${libraryMedia.length} items`);
+              } else {
+                addLogEntry('info', `Creating new collection: ${collectionName}`, 'creating');
+                console.log(`🆕 Creating new collection: ${collectionName}`);
+                await createCollection(collectionName, libraryKey, libraryMedia);
+                addLogEntry('success', `Created collection "${collectionName}" with ${libraryMedia.length} items`, 'creating');
+                console.log(`  ✅ Created collection with ${libraryMedia.length} items`);
+              }
+            }
           }
         } else {
           addLogEntry('info', `Skipping ${preview.holiday}: no items selected`, 'creating');
@@ -293,12 +347,12 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
       
       setOverallProgress({ current: totalPlaylists, total: totalPlaylists, percentage: 100 });
       setCurrentPhase(null);
-      addLogEntry('success', 'Playlist creation complete!', 'creating');
-      console.log('🎉 Playlist creation complete!');
+      addLogEntry('success', `${contentType === 'playlist' ? 'Playlist' : 'Collection'} creation complete!`, 'creating');
+      console.log(`🎉 ${contentType === 'playlist' ? 'Playlist' : 'Collection'} creation complete!`);
       onPlaylistsCreated?.();
     } catch (err) {
-      addLogEntry('error', `Failed to create playlists: ${err instanceof Error ? err.message : 'Unknown error'}`, 'creating');
-      console.error('❌ Failed to create playlists:', err);
+      addLogEntry('error', `Failed to create ${contentType === 'playlist' ? 'playlists' : 'collections'}: ${err instanceof Error ? err.message : 'Unknown error'}`, 'creating');
+      console.error(`❌ Failed to create ${contentType === 'playlist' ? 'playlists' : 'collections'}:`, err);
       setCurrentPhase(null);
     } finally {
       setIsCreatingPlaylists(false);
@@ -344,7 +398,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
         <CardHeader>
           <CardTitle>Select Holidays</CardTitle>
           <CardDescription>
-            Choose which holidays you want to create playlists for
+            Choose which holidays you want to create {contentType === 'playlist' ? 'playlists' : 'collections'} for
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -403,81 +457,143 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Select Media Libraries</CardTitle>
+          <CardTitle>Configuration</CardTitle>
           <CardDescription>
-            Choose which TV and movie libraries to scan for holiday content
+            Choose your content type and which libraries to scan for holiday content
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {isLoadingLibraries ? (
-            <div>Loading libraries...</div>
-          ) : libraries.length === 0 ? (
-            <Alert>
-              <AlertDescription>
-                No media libraries found. Make sure you have TV shows or movies in your Plex server.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <div className="space-y-4">
-              {tvLibraries.length > 0 && (
-                <div>
-                  <h3 className="font-medium mb-2">📺 TV Show Libraries</h3>
-                  <div className="space-y-2">
-                    {tvLibraries.map((library) => (
-                      <div key={library.key} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={library.key}
-                          checked={selectedLibraries.has(library.key)}
-                          onCheckedChange={(checked) => {
-                            const newSelected = new Set(selectedLibraries);
-                            if (checked) {
-                              newSelected.add(library.key);
-                            } else {
-                              newSelected.delete(library.key);
-                            }
-                            setSelectedLibraries(newSelected);
-                          }}
-                        />
-                        <Label htmlFor={library.key} className="flex-1">
-                          {library.title}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {movieLibraries.length > 0 && (
-                <div>
-                  <h3 className="font-medium mb-2">🎬 Movie Libraries</h3>
-                  <div className="space-y-2">
-                    {movieLibraries.map((library) => (
-                      <div key={library.key} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={library.key}
-                          checked={selectedLibraries.has(library.key)}
-                          onCheckedChange={(checked) => {
-                            const newSelected = new Set(selectedLibraries);
-                            if (checked) {
-                              newSelected.add(library.key);
-                            } else {
-                              newSelected.delete(library.key);
-                            }
-                            setSelectedLibraries(newSelected);
-                          }}
-                        />
-                        <Label htmlFor={library.key} className="flex-1">
-                          {library.title}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
+        <CardContent className="space-y-6">
+          {/* Content Type Selection */}
           <div className="space-y-4">
+            <div>
+              <h3 className="font-medium text-lg mb-3">Content Type</h3>
+              <div className="grid grid-cols-1 gap-3">
+                <div 
+                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                    contentType === 'playlist' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setContentType('playlist')}
+                >
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="radio"
+                      name="contentType"
+                      value="playlist"
+                      checked={contentType === 'playlist'}
+                      onChange={() => setContentType('playlist')}
+                      className="mt-1"
+                    />
+                    <div>
+                      <h4 className="font-medium">🎵 Playlists</h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Create sequential, playable lists perfect for marathoning holiday episodes in order.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div 
+                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                    contentType === 'collection' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setContentType('collection')}
+                >
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="radio"
+                      name="contentType"
+                      value="collection"
+                      checked={contentType === 'collection'}
+                      onChange={() => setContentType('collection')}
+                      className="mt-1"
+                    />
+                    <div>
+                      <h4 className="font-medium">📚 Collections</h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Create curated groups that appear in your library for easy content discovery.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Library Selection */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-lg">Media Libraries</h3>
+            {isLoadingLibraries ? (
+              <div>Loading libraries...</div>
+            ) : libraries.length === 0 ? (
+              <Alert>
+                <AlertDescription>
+                  No media libraries found. Make sure you have TV shows or movies in your Plex server.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className="space-y-4">
+                {tvLibraries.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">📺 TV Show Libraries</h4>
+                    <div className="space-y-2">
+                      {tvLibraries.map((library) => (
+                        <div key={library.key} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={library.key}
+                            checked={selectedLibraries.has(library.key)}
+                            onCheckedChange={(checked) => {
+                              const newSelected = new Set(selectedLibraries);
+                              if (checked) {
+                                newSelected.add(library.key);
+                              } else {
+                                newSelected.delete(library.key);
+                              }
+                              setSelectedLibraries(newSelected);
+                            }}
+                          />
+                          <Label htmlFor={library.key} className="flex-1">
+                            {library.title}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {movieLibraries.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">🎬 Movie Libraries</h4>
+                    <div className="space-y-2">
+                      {movieLibraries.map((library) => (
+                        <div key={library.key} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={library.key}
+                            checked={selectedLibraries.has(library.key)}
+                            onCheckedChange={(checked) => {
+                              const newSelected = new Set(selectedLibraries);
+                              if (checked) {
+                                newSelected.add(library.key);
+                              } else {
+                                newSelected.delete(library.key);
+                              }
+                              setSelectedLibraries(newSelected);
+                            }}
+                          />
+                          <Label htmlFor={library.key} className="flex-1">
+                            {library.title}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Additional Options */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-lg">Additional Options</h3>
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="useWikipedia"
@@ -522,7 +638,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
               variant="outline"
               onClick={() => setStep('holidays')}
             >
-              Back to Holiday Selection
+              Back to Holidays
             </Button>
             <Button 
               onClick={analyzeLibraries} 
@@ -635,7 +751,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
         <CardHeader>
           <CardTitle>Review Media</CardTitle>
           <CardDescription>
-            Select which episodes and movies to include in your holiday playlists
+            Select which episodes and movies to include in your holiday {contentType === 'playlist' ? 'playlists' : 'collections'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -730,7 +846,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
               disabled={Array.from(selectedMedia.values()).every(selected => !selected)}
               className="flex-1"
             >
-              Create/Update Playlists
+              Create/Update {contentType === 'playlist' ? 'Playlists' : 'Collections'}
             </Button>
           </div>
         </CardContent>
@@ -743,16 +859,16 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Creating Playlists</CardTitle>
+            <CardTitle>Creating {contentType === 'playlist' ? 'Playlists' : 'Collections'}</CardTitle>
             <CardDescription>
-              {isCreatingPlaylists ? 'Creating your holiday playlists...' : 'Playlists created successfully!'}
+              {isCreatingPlaylists ? `Creating your holiday ${contentType === 'playlist' ? 'playlists' : 'collections'}...` : `${contentType === 'playlist' ? 'Playlists' : 'Collections'} created successfully!`}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {isCreatingPlaylists ? (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>{currentPhase === 'creating' ? 'Creating playlists...' : currentPhase === 'adding' ? 'Adding episodes...' : 'Processing...'}</span>
+                  <span>{currentPhase === 'creating' ? `Creating ${contentType === 'playlist' ? 'playlists' : 'collections'}...` : currentPhase === 'adding' ? 'Adding episodes...' : 'Processing...'}</span>
                   <span>{overallProgress ? `${overallProgress.current}/${overallProgress.total}` : ''}</span>
                 </div>
                 <Progress value={overallProgress?.percentage || 0} className="w-full" />
@@ -761,11 +877,11 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
               <div className="space-y-4">
                 <Alert>
                   <AlertDescription>
-                    Your holiday playlists have been created/updated successfully!
+                    Your holiday {contentType === 'playlist' ? 'playlists' : 'collections'} have been created/updated successfully!
                   </AlertDescription>
                 </Alert>
                 <Button onClick={resetAnalysis} className="w-full">
-                  Create More Playlists
+                  Create More {contentType === 'playlist' ? 'Playlists' : 'Collections'}
                 </Button>
               </div>
             )}
