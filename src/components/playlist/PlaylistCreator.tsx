@@ -35,7 +35,7 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
   const [useWikipedia, setUseWikipedia] = useState(true);
   const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
   const [isCreatingPlaylists, setIsCreatingPlaylists] = useState(false);
-  const [step, setStep] = useState<'holidays' | 'content-type' | 'library' | 'analyze' | 'confirm' | 'create'>('holidays');
+  const [step, setStep] = useState<'holidays' | 'library' | 'analyze' | 'confirm' | 'create'>('holidays');
   const [selectedHolidays, setSelectedHolidays] = useState<Set<Holiday>>(new Set(['Halloween', 'Thanksgiving', 'Christmas', "Valentine's"]));
   const [selectedMedia, setSelectedMedia] = useState<Map<string, boolean>>(new Map());
   const [scanStatus, setScanStatus] = useState<string>('');
@@ -439,90 +439,8 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
               Back
             </Button>
             <Button 
-              onClick={() => setStep('content-type')}
-              disabled={selectedHolidays.size === 0}
-            >
-              Continue to Content Type Selection
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (step === 'content-type') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Select Content Type</CardTitle>
-          <CardDescription>
-            Choose whether to create playlists or collections for your holiday content
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 gap-4">
-            <div className="space-y-3">
-              <div 
-                className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                  contentType === 'playlist' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                }`}
-                onClick={() => setContentType('playlist')}
-              >
-                <div className="flex items-start space-x-3">
-                  <input
-                    type="radio"
-                    name="contentType"
-                    value="playlist"
-                    checked={contentType === 'playlist'}
-                    onChange={() => setContentType('playlist')}
-                    className="mt-1"
-                  />
-                  <div>
-                    <h3 className="font-medium text-lg">🎵 Playlists</h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Create sequential, playable lists that can be used in Plex for continuous viewing. 
-                      Perfect for marathoning holiday episodes in order.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div 
-                className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                  contentType === 'collection' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                }`}
-                onClick={() => setContentType('collection')}
-              >
-                <div className="flex items-start space-x-3">
-                  <input
-                    type="radio"
-                    name="contentType"
-                    value="collection"
-                    checked={contentType === 'collection'}
-                    onChange={() => setContentType('collection')}
-                    className="mt-1"
-                  />
-                  <div>
-                    <h3 className="font-medium text-lg">📚 Collections</h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Create curated groups of related content that appear as collections in your library. 
-                      Great for organizing and discovering holiday content.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-between">
-            <Button 
-              variant="outline" 
-              onClick={() => setStep('holidays')}
-            >
-              Back to Holidays
-            </Button>
-            <Button 
               onClick={() => setStep('library')}
+              disabled={selectedHolidays.size === 0}
             >
               Continue to Library Selection
             </Button>
@@ -539,81 +457,143 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Select Media Libraries</CardTitle>
+          <CardTitle>Configuration</CardTitle>
           <CardDescription>
-            Choose which TV and movie libraries to scan for holiday content
+            Choose your content type and which libraries to scan for holiday content
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {isLoadingLibraries ? (
-            <div>Loading libraries...</div>
-          ) : libraries.length === 0 ? (
-            <Alert>
-              <AlertDescription>
-                No media libraries found. Make sure you have TV shows or movies in your Plex server.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <div className="space-y-4">
-              {tvLibraries.length > 0 && (
-                <div>
-                  <h3 className="font-medium mb-2">📺 TV Show Libraries</h3>
-                  <div className="space-y-2">
-                    {tvLibraries.map((library) => (
-                      <div key={library.key} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={library.key}
-                          checked={selectedLibraries.has(library.key)}
-                          onCheckedChange={(checked) => {
-                            const newSelected = new Set(selectedLibraries);
-                            if (checked) {
-                              newSelected.add(library.key);
-                            } else {
-                              newSelected.delete(library.key);
-                            }
-                            setSelectedLibraries(newSelected);
-                          }}
-                        />
-                        <Label htmlFor={library.key} className="flex-1">
-                          {library.title}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {movieLibraries.length > 0 && (
-                <div>
-                  <h3 className="font-medium mb-2">🎬 Movie Libraries</h3>
-                  <div className="space-y-2">
-                    {movieLibraries.map((library) => (
-                      <div key={library.key} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={library.key}
-                          checked={selectedLibraries.has(library.key)}
-                          onCheckedChange={(checked) => {
-                            const newSelected = new Set(selectedLibraries);
-                            if (checked) {
-                              newSelected.add(library.key);
-                            } else {
-                              newSelected.delete(library.key);
-                            }
-                            setSelectedLibraries(newSelected);
-                          }}
-                        />
-                        <Label htmlFor={library.key} className="flex-1">
-                          {library.title}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
+        <CardContent className="space-y-6">
+          {/* Content Type Selection */}
           <div className="space-y-4">
+            <div>
+              <h3 className="font-medium text-lg mb-3">Content Type</h3>
+              <div className="grid grid-cols-1 gap-3">
+                <div 
+                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                    contentType === 'playlist' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setContentType('playlist')}
+                >
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="radio"
+                      name="contentType"
+                      value="playlist"
+                      checked={contentType === 'playlist'}
+                      onChange={() => setContentType('playlist')}
+                      className="mt-1"
+                    />
+                    <div>
+                      <h4 className="font-medium">🎵 Playlists</h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Create sequential, playable lists perfect for marathoning holiday episodes in order.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div 
+                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                    contentType === 'collection' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setContentType('collection')}
+                >
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="radio"
+                      name="contentType"
+                      value="collection"
+                      checked={contentType === 'collection'}
+                      onChange={() => setContentType('collection')}
+                      className="mt-1"
+                    />
+                    <div>
+                      <h4 className="font-medium">📚 Collections</h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Create curated groups that appear in your library for easy content discovery.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Library Selection */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-lg">Media Libraries</h3>
+            {isLoadingLibraries ? (
+              <div>Loading libraries...</div>
+            ) : libraries.length === 0 ? (
+              <Alert>
+                <AlertDescription>
+                  No media libraries found. Make sure you have TV shows or movies in your Plex server.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className="space-y-4">
+                {tvLibraries.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">📺 TV Show Libraries</h4>
+                    <div className="space-y-2">
+                      {tvLibraries.map((library) => (
+                        <div key={library.key} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={library.key}
+                            checked={selectedLibraries.has(library.key)}
+                            onCheckedChange={(checked) => {
+                              const newSelected = new Set(selectedLibraries);
+                              if (checked) {
+                                newSelected.add(library.key);
+                              } else {
+                                newSelected.delete(library.key);
+                              }
+                              setSelectedLibraries(newSelected);
+                            }}
+                          />
+                          <Label htmlFor={library.key} className="flex-1">
+                            {library.title}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {movieLibraries.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">🎬 Movie Libraries</h4>
+                    <div className="space-y-2">
+                      {movieLibraries.map((library) => (
+                        <div key={library.key} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={library.key}
+                            checked={selectedLibraries.has(library.key)}
+                            onCheckedChange={(checked) => {
+                              const newSelected = new Set(selectedLibraries);
+                              if (checked) {
+                                newSelected.add(library.key);
+                              } else {
+                                newSelected.delete(library.key);
+                              }
+                              setSelectedLibraries(newSelected);
+                            }}
+                          />
+                          <Label htmlFor={library.key} className="flex-1">
+                            {library.title}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Additional Options */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-lg">Additional Options</h3>
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="useWikipedia"
@@ -656,9 +636,9 @@ export function PlaylistCreator({ onPlaylistsCreated }: PlaylistCreatorProps) {
           <div className="flex justify-between">
             <Button 
               variant="outline"
-              onClick={() => setStep('content-type')}
+              onClick={() => setStep('holidays')}
             >
-              Back to Content Type
+              Back to Holidays
             </Button>
             <Button 
               onClick={analyzeLibraries} 
