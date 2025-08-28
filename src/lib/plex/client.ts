@@ -652,20 +652,24 @@ export class PlexClient {
         throw new Error('Cannot create collection with no media');
       }
 
-      // Extract metadata keys from media items
-      const mediaKeys = media.map(item => {
-        const key = item.key.split('/').pop();
-        if (!key) {
-          throw new Error(`Invalid media key: ${item.key}`);
-        }
-        return key;
-      });
+      // Get real machine identifier for server URIs
+      const realMachineId = await this.getRealMachineIdentifier();
+      
+      // Extract first media key and create server URI
+      const firstMediaKey = media[0].key.split('/').pop();
+      if (!firstMediaKey) {
+        throw new Error(`Invalid media key: ${media[0].key}`);
+      }
+      
+      // Use server URI format like playlists
+      const firstMediaUri = `server://${realMachineId}/com.plexapp.plugins.library/library/metadata/${firstMediaKey}`;
 
       console.log('📝 PlexClient: Collection creation parameters:', {
         name,
         libraryKey,
         mediaCount: media.length,
-        mediaKeys: mediaKeys.slice(0, 3), // Log first 3 for debugging
+        firstMediaKey,
+        firstMediaUri
       });
 
       // Create the collection by adding the first item
@@ -674,7 +678,7 @@ export class PlexClient {
         title: name,
         smart: 0,
         sectionId: libraryKey,
-        uri: `/library/metadata/${mediaKeys[0]}`,
+        uri: firstMediaUri,
       });
 
       console.log('📋 PlexClient: Collection creation response:', data);
@@ -714,13 +718,20 @@ export class PlexClient {
         return true;
       }
 
-      // Extract metadata keys from media items
-      const mediaKeys = media.map(item => {
+      // Get real machine identifier for server URIs (like playlists)
+      const realMachineId = await this.getRealMachineIdentifier();
+      
+      // Extract metadata keys and create server URIs
+      const uris = media.map(item => {
         const key = item.key.split('/').pop();
         if (!key) {
+          console.error(`❌ PlexClient: Invalid media key for ${item.title}:`, item.key);
           throw new Error(`Invalid media key: ${item.key}`);
         }
-        return `/library/metadata/${key}`;
+        // Use the same server URI format as playlists
+        const serverUri = `server://${realMachineId}/com.plexapp.plugins.library/library/metadata/${key}`;
+        console.log(`📺 PlexClient: Collection Media Server URI: ${item.title} -> ${serverUri}`);
+        return serverUri;
       });
 
       console.log(`📝 PlexClient: Adding ${media.length} items to collection individually`);
@@ -729,7 +740,7 @@ export class PlexClient {
       let successCount = 0;
       for (let i = 0; i < media.length; i++) {
         const item = media[i];
-        const uri = mediaKeys[i];
+        const uri = uris[i];
         
         const currentProgress = {
           current: i + 1,
@@ -750,13 +761,34 @@ export class PlexClient {
           });
           
           console.log(`📋 PlexClient: Collection item ${i + 1} response:`, response);
-          successCount++;
           
-          globalActivityLogger.addLogEntry?.('success', 
-            `Added "${item.title}" to collection`, 
-            'adding'
-          );
-          console.log(`✅ PlexClient: Item ${i + 1} added to collection successfully`);
+          // Check response for success indicators
+          if (response?.MediaContainer) {
+            const leafCountAdded = response.MediaContainer.leafCountAdded || 0;
+            const leafCountRequested = response.MediaContainer.leafCountRequested || 0;
+            
+            if (leafCountAdded > 0 || leafCountRequested > 0) {
+              successCount++;
+              globalActivityLogger.addLogEntry?.('success', 
+                `Added "${item.title}" to collection`, 
+                'adding'
+              );
+              console.log(`✅ PlexClient: Item ${i + 1} added to collection successfully (leafCountAdded: ${leafCountAdded}, leafCountRequested: ${leafCountRequested})`);
+            } else {
+              globalActivityLogger.addLogEntry?.('warning', 
+                `May have failed to add "${item.title}" to collection`, 
+                'adding'
+              );
+              console.warn(`⚠️ PlexClient: Item ${i + 1} may not have been added to collection (leafCountAdded: ${leafCountAdded}, leafCountRequested: ${leafCountRequested})`);
+            }
+          } else {
+            successCount++;
+            globalActivityLogger.addLogEntry?.('success', 
+              `Added "${item.title}" to collection`, 
+              'adding'
+            );
+            console.log(`✅ PlexClient: Item ${i + 1} added to collection successfully`);
+          }
         } catch (error) {
           globalActivityLogger.addLogEntry?.('error', 
             `Failed to add "${item.title}" to collection: ${error}`, 
@@ -772,8 +804,31 @@ export class PlexClient {
       );
       console.log(`📊 PlexClient: Collection additions complete. ${successCount}/${media.length} items processed successfully.`);
 
-      console.log(`🎉 PlexClient: Successfully added ${successCount} items to collection (${media.length} requested)`);
-      return successCount > 0;
+      // Verify media were actually added by reading the collection back
+      console.log(`🔍 PlexClient: Verifying items were added to collection...`);
+      const updatedCollectionItems = await this.getCollectionItems(collectionKey);
+      console.log(`📊 PlexClient: Collection now contains ${updatedCollectionItems.length} total items`);
+      
+      // Check if our media are in the collection
+      const addedGuids = new Set(media.map(item => item.guid));
+      const foundItems = updatedCollectionItems.filter(item => addedGuids.has(item.guid));
+      console.log(`✅ PlexClient: ${foundItems.length}/${media.length} items verified in collection`);
+      
+      if (foundItems.length < media.length) {
+        console.warn(`⚠️ PlexClient: ${media.length - foundItems.length} items missing from collection after add operation`);
+        
+        // Log which items are missing
+        const foundGuids = new Set(foundItems.map(item => item.guid));
+        const missingItems = media.filter(item => !foundGuids.has(item.guid));
+        console.warn(`❌ PlexClient: Missing items:`, missingItems.map(item => ({
+          title: item.title,
+          guid: item.guid,
+          key: item.key
+        })));
+      }
+
+      console.log(`🎉 PlexClient: Successfully added ${foundItems.length} items to collection (${media.length} requested)`);
+      return foundItems.length > 0;
     } catch (error) {
       console.error('❌ PlexClient: Failed to add to collection:', error);
       return false;
