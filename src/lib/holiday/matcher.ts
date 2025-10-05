@@ -1,5 +1,6 @@
 import { Holiday, PlexEpisode, PlexMovie, PlexMedia, HolidayMatch, isPlexEpisode } from '@/types';
 import { CURATED_KEYWORDS, EXCLUDE_PATTERNS } from './config';
+import { REQUIRED_MOVIES } from './required-movies';
 
 export class HolidayMatcher {
   private includePatterns: Map<Holiday, RegExp[]> = new Map();
@@ -105,12 +106,62 @@ export class HolidayMatcher {
     return strongPatterns[holiday] || [];
   }
 
+  private isRequiredMovie(media: PlexMedia, holiday: Holiday): boolean {
+    // Only check movies, not episodes
+    if (isPlexEpisode(media)) {
+      return false;
+    }
+
+    const requiredList = REQUIRED_MOVIES[holiday] || [];
+    const mediaTitle = media.title?.toLowerCase() || '';
+    const mediaYear = media.year;
+
+    for (const required of requiredList) {
+      const requiredTitle = required.title.toLowerCase();
+
+      // Exact title match with year
+      if (mediaTitle === requiredTitle && mediaYear === required.year) {
+        return true;
+      }
+
+      // Title match with year tolerance (±1 year for potential metadata differences)
+      if (mediaTitle === requiredTitle && mediaYear && Math.abs(mediaYear - required.year) <= 1) {
+        return true;
+      }
+
+      // Handle alternate titles and close variations
+      // Remove common prefixes/suffixes and special characters for comparison
+      const normalizedMediaTitle = mediaTitle
+        .replace(/^(the|a|an)\s+/i, '')
+        .replace(/[:\-–—]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const normalizedRequiredTitle = requiredTitle
+        .replace(/^(the|a|an)\s+/i, '')
+        .replace(/[:\-–—]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (normalizedMediaTitle === normalizedRequiredTitle && mediaYear === required.year) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   isMatch(media: PlexMedia, holiday: Holiday): boolean {
+    // Required movies are always a match
+    if (this.isRequiredMovie(media, holiday)) {
+      return true;
+    }
+
     const score = this.getMatchScore(media, holiday);
-    
+
     // Require a minimum confidence score
     const threshold = 8; // Adjust this to be more/less strict
-    
+
     return score >= threshold;
   }
 
@@ -120,39 +171,46 @@ export class HolidayMatcher {
 
   findMatchesWithThreshold(media: PlexMedia[], threshold: number, selectedHolidays?: Set<Holiday>): HolidayMatch[] {
     const results: HolidayMatch[] = [];
-    
+
     // Use selected holidays if provided, otherwise use all holidays
-    const holidaysToCheck = selectedHolidays 
+    const holidaysToCheck = selectedHolidays
       ? Array.from(selectedHolidays)
       : Object.keys(CURATED_KEYWORDS) as Holiday[];
-    
+
     console.log(`🔍 HolidayMatcher: Analyzing ${media.length} media items for ${holidaysToCheck.length} holidays: ${holidaysToCheck.join(', ')}`);
-    
+
     for (const holiday of holidaysToCheck) {
       const matchedEpisodes: PlexEpisode[] = [];
       const matchedMovies: PlexMovie[] = [];
-      
+
       for (const item of media) {
+        const isRequired = this.isRequiredMovie(item, holiday);
         const score = this.getMatchScore(item, holiday);
-        if (score >= threshold) {
-          const title = isPlexEpisode(item) 
+
+        if (isRequired || score >= threshold) {
+          const title = isPlexEpisode(item)
             ? `${item.grandparentTitle} - ${item.title}`
             : item.title;
-          console.log(`✅ ${holiday} match (score: ${score}): ${title}`);
-          
+
+          if (isRequired) {
+            console.log(`✅ ${holiday} REQUIRED MOVIE: ${title} (${item.year || 'N/A'})`);
+          } else {
+            console.log(`✅ ${holiday} match (score: ${score}): ${title}`);
+          }
+
           if (isPlexEpisode(item)) {
             matchedEpisodes.push(item);
           } else {
             matchedMovies.push(item);
           }
         } else if (score > 0) {
-          const title = isPlexEpisode(item) 
+          const title = isPlexEpisode(item)
             ? `${item.grandparentTitle} - ${item.title}`
             : item.title;
           console.log(`⚠️ ${holiday} weak match (score: ${score}): ${title}`);
         }
       }
-      
+
       if (matchedEpisodes.length > 0 || matchedMovies.length > 0) {
         results.push({
           holiday,
