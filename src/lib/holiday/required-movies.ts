@@ -4,7 +4,7 @@ import { Holiday } from '@/types';
  * Required movies that must always be included in holiday playlists
  * These are prioritized above Wikipedia scraping and keyword matching
  */
-export const REQUIRED_MOVIES: Record<Holiday, Array<{ title: string; year: number }>> = {
+export const REQUIRED_MOVIES: Partial<Record<Holiday, Array<{ title: string; year: number }>>> = {
   Halloween: [
     { title: 'Das Cabinet des Dr. Caligari', year: 1920 },
     { title: 'Der Golem, wie er in die Welt kam', year: 1920 },
@@ -1219,5 +1219,5 @@ export const REQUIRED_MOVIES: Record<Holiday, Array<{ title: string; year: numbe
   ],
   Thanksgiving: [],
   Christmas: [],
-  "Valentine's": [],
+  "Valentine's Day": [],
 };

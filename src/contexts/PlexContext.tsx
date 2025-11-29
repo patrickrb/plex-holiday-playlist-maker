@@ -19,6 +19,9 @@ interface PlexContextType {
   getPlaylistItems: (playlistKey: string) => Promise<PlexMedia[]>;
   createPlaylist: (name: string, media: PlexMedia[]) => Promise<boolean>;
   updatePlaylist: (playlistKey: string, newMedia: PlexMedia[], existingMedia: PlexMedia[]) => Promise<boolean>;
+  getCollections: () => Promise<PlexPlaylist[]>;
+  createCollection: (title: string, media: PlexMedia[]) => Promise<boolean>;
+  addToCollection: (collectionTitle: string, media: PlexMedia[]) => Promise<boolean>;
   getServerInfo: () => Promise<{ name: string; version: string } | null>;
   restoreConnection: () => Promise<void>;
   // Activity logging
@@ -131,14 +134,35 @@ export function PlexProvider({ children }: { children: React.ReactNode }) {
   }, [client, isConnected]);
 
   const updatePlaylist = useCallback(async (
-    playlistKey: string, 
-    newMedia: PlexMedia[], 
+    playlistKey: string,
+    newMedia: PlexMedia[],
     existingMedia: PlexMedia[]
   ): Promise<boolean> => {
     if (!client || !isConnected) {
       throw new Error('Not connected to Plex server');
     }
     return client.updatePlaylist(playlistKey, newMedia, existingMedia);
+  }, [client, isConnected]);
+
+  const getCollections = useCallback(async (): Promise<PlexPlaylist[]> => {
+    if (!client || !isConnected) {
+      throw new Error('Not connected to Plex server');
+    }
+    return client.getCollections();
+  }, [client, isConnected]);
+
+  const createCollection = useCallback(async (title: string, media: PlexMedia[]): Promise<boolean> => {
+    if (!client || !isConnected) {
+      throw new Error('Not connected to Plex server');
+    }
+    return client.createCollection(title, media);
+  }, [client, isConnected]);
+
+  const addToCollection = useCallback(async (collectionTitle: string, media: PlexMedia[]): Promise<boolean> => {
+    if (!client || !isConnected) {
+      throw new Error('Not connected to Plex server');
+    }
+    return client.addToCollection(collectionTitle, media);
   }, [client, isConnected]);
 
   const getServerInfo = useCallback(async () => {
@@ -200,6 +224,9 @@ export function PlexProvider({ children }: { children: React.ReactNode }) {
     getPlaylistItems,
     createPlaylist,
     updatePlaylist,
+    getCollections,
+    createCollection,
+    addToCollection,
     getServerInfo,
     restoreConnection,
     // Activity logging

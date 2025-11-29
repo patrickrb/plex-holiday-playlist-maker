@@ -50,7 +50,30 @@ export interface PlexPlaylist {
   items?: PlexMedia[];
 }
 
-export type Holiday = 'Halloween' | 'Thanksgiving' | 'Christmas' | "Valentine's";
+export type Holiday =
+  | 'Christmas'
+  | 'Thanksgiving'
+  | 'Halloween'
+  | 'New Years'
+  | 'Hanukkah'
+  | 'Kwanzaa'
+  | 'Easter'
+  | 'Valentine\'s Day'
+  | 'Independence Day'
+  | 'St. Patrick\'s Day'
+  | 'April Fools'
+  | 'Mother\'s Day'
+  | 'Father\'s Day'
+  | 'Labor Day'
+  | 'Memorial Day'
+  | 'Veterans Day'
+  | 'Mardi Gras'
+  | 'Dia de los Muertos'
+  | 'Chinese New Year'
+  | 'Diwali'
+  | 'Ramadan'
+  | 'Winter Holiday'
+  | 'Generic Holiday';
 
 export interface HolidayMatch {
   holiday: Holiday;

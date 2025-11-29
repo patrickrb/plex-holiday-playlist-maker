@@ -1,0 +1,23 @@
+- christmas
+- thanksgiving
+- halloween
+- new_years
+- hanukkah
+- kwanzaa
+- easter
+- valentine
+- independence_day
+- st_patricks
+- april_fools
+- mothers_day
+- fathers_day
+- labor_day
+- memorial_day
+- veterans_day
+- mardi_gras
+- dia_de_los_muertos
+- chinese_new_year
+- diwali
+- ramadan
+- generic_winter_holiday (snowy specials without explicit holiday naming)
+- generic_holiday (if holiday theme is present but unspecified)

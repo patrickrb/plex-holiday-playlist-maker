@@ -182,7 +182,7 @@ export function useHolidayPlaylists() {
     return previews;
   }, [analyzeMedia]);
 
-  const getMatchSummary = useCallback((media: PlexMedia[]): Record<Holiday, number> => {
+  const getMatchSummary = useCallback((media: PlexMedia[]): Partial<Record<Holiday, number>> => {
     const matcher = new HolidayMatcher(scrapedTitles);
     return matcher.getMatchSummary(media);
   }, [scrapedTitles]);

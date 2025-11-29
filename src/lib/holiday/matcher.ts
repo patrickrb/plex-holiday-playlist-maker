@@ -97,11 +97,11 @@ export class HolidayMatcher {
   }
 
   private getStrongIndicators(holiday: Holiday): string[] {
-    const strongPatterns: Record<Holiday, string[]> = {
+    const strongPatterns: Partial<Record<Holiday, string[]>> = {
       Halloween: ['\\bHallowe?en\\b', 'Treehouse of Horror', 'October 31', 'All Hallows'],
       Thanksgiving: ['\\bThanksgiving\\b', '\\bFriendsgiving\\b', 'Turkey Day'],
       Christmas: ['\\bChristmas\\b', '\\bX[- ]?mas\\b', 'December 25', 'Santa', 'Ho Ho Ho', '\\bElf\\b', '\\bReindeer\\b', '\\bNorth Pole\\b'],
-      "Valentine's": ["\\bValentine'?s?\\b", 'February 14', 'Cupid']
+      "Valentine's Day": ["\\bValentine'?s?\\b", 'February 14', 'Cupid']
     };
     return strongPatterns[holiday] || [];
   }
@@ -223,13 +223,8 @@ export class HolidayMatcher {
     return results;
   }
 
-  getMatchSummary(media: PlexMedia[]): Record<Holiday, number> {
-    const summary: Record<Holiday, number> = {
-      Halloween: 0,
-      Thanksgiving: 0,
-      Christmas: 0,
-      "Valentine's": 0
-    };
+  getMatchSummary(media: PlexMedia[]): Partial<Record<Holiday, number>> {
+    const summary: Partial<Record<Holiday, number>> = {};
 
     for (const holiday of Object.keys(CURATED_KEYWORDS) as Holiday[]) {
       summary[holiday] = media.filter(item => this.isMatch(item, holiday)).length;

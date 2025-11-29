@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
         'X-Plex-Product': 'Plex Holiday Playlist Maker',
         'X-Plex-Version': '1.0.0',
       },
-      timeout: 30000,
+      timeout: 300000, // 5 minutes - increased for large library scans
       params,
       data,
       httpsAgent: new https.Agent({
@@ -45,6 +45,15 @@ export async function POST(request: NextRequest) {
       data: config.data,
       headers: { ...config.headers, 'X-Plex-Token': '[REDACTED]' }
     });
+
+    // Build the full URL with query params for logging
+    const urlWithParams = new URL(config.url);
+    if (config.params) {
+      Object.entries(config.params).forEach(([key, value]) => {
+        urlWithParams.searchParams.append(key, String(value));
+      });
+    }
+    console.log('🌐 Full URL with params:', urlWithParams.toString());
 
     const response = await axios(config);
     console.log('✅ Plex API Response:', {
@@ -77,12 +86,17 @@ export async function POST(request: NextRequest) {
         status: error.response?.status,
         statusText: error.response?.statusText,
         data: responseData,
+        headers: error.response?.headers,
         config: {
           method: error.config?.method,
           url: error.config?.url,
           params: error.config?.params,
           data: error.config?.data
-        }
+        },
+        // Log the full URL that was attempted
+        attemptedUrl: error.config?.url ? 
+          `${error.config.url}${error.config.params ? '?' + new URLSearchParams(error.config.params as Record<string, string>).toString() : ''}` 
+          : 'unknown'
       });
       
       return NextResponse.json(

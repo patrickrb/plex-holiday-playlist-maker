@@ -8,15 +8,21 @@ A modern web application that automatically creates holiday-themed playlists fro
 
 📚 **Wikipedia Integration** - Optionally scrapes Wikipedia for comprehensive lists of holiday TV specials and episodes
 
+🤖 **AI-Powered Classification** - Uses Azure OpenAI to intelligently classify media that isn't found in curated lists or Wikipedia
+
+💾 **PostgreSQL Database** - Stores classification results and caches AI responses to avoid redundant API calls
+
 ✅ **Episode Confirmation** - Review and confirm which episodes to include before creating playlists
 
 🔄 **Smart Updates** - Updates existing playlists without duplicates and creates new ones as needed
 
 ## Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - A running Plex Media Server
 - Plex authentication token
+- Docker and Docker Compose (for local database)
+- Azure OpenAI account (optional, for AI-powered classification)
 
 ## Getting Started
 
@@ -37,12 +43,38 @@ After deployment, your app will be available at your custom Vercel URL and ready
    npm install
    ```
 
-2. **Start the development server:**
+2. **Set up environment variables:**
+   Copy the `.env` file and update with your credentials:
+   ```bash
+   # Azure OpenAI Configuration (optional)
+   AZURE_OPENAI_KEY=your-key-here
+   AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/openai/deployments/gpt-4o-mini-instruct
+
+   # PostgreSQL Configuration
+   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/plex_holidays
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=postgres
+   POSTGRES_DB=plex_holidays
+   ```
+
+3. **Start the PostgreSQL database:**
+   ```bash
+   docker-compose up -d
+   ```
+
+   This will start a PostgreSQL container with the database schema automatically initialized.
+
+4. **Verify the database is running:**
+   ```bash
+   docker-compose ps
+   ```
+
+5. **Start the development server:**
    ```bash
    npm run dev
    ```
 
-3. **Open your browser:**
+6. **Open your browser:**
    Navigate to [http://localhost:3000](http://localhost:3000)
 
 ## How to Use
@@ -67,6 +99,8 @@ After deployment, your app will be available at your custom Vercel URL and ready
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **UI Components:** shadcn/ui
+- **Database:** PostgreSQL
+- **AI:** Azure OpenAI (GPT-4o-mini)
 - **HTTP Client:** Axios (for server-side requests)
 - **Web Scraping:** node-html-parser
 
@@ -89,6 +123,8 @@ src/
 │   └── ui/               # shadcn/ui components
 ├── hooks/                # Custom React hooks
 ├── lib/                  # Utility libraries
+│   ├── ai/               # AI classification service
+│   ├── db/               # Database client utilities
 │   ├── holiday/          # Holiday detection logic
 │   ├── plex/             # Plex API client
 │   └── scraper/          # Wikipedia scraping
@@ -97,10 +133,36 @@ src/
 
 ## Configuration
 
-The holiday detection uses configurable patterns and Wikipedia sources defined in:
+### Holiday Detection
 
-- `src/lib/holiday/config.ts` - Keyword patterns and Wikipedia URLs
-- Holiday types: Halloween, Thanksgiving, Christmas, Valentine's Day
+The holiday detection uses a three-tier approach:
+
+1. **Curated Patterns** - Keyword patterns defined in `src/lib/holiday/config.ts`
+2. **Wikipedia Data** - Comprehensive lists scraped from Wikipedia
+3. **AI Classification** - Azure OpenAI for items not matched by the above
+
+Holiday types supported: Halloween, Thanksgiving, Christmas, Valentine's Day
+
+### AI Classification
+
+To enable AI-powered classification:
+
+1. Get an Azure OpenAI API key from the Azure Portal
+2. Add your credentials to the `.env` file
+3. Pass `useAI: true` when initializing the `HolidayMatcher`
+
+The AI classifier:
+- Only classifies items that don't match curated patterns or Wikipedia data
+- Caches results in PostgreSQL to avoid redundant API calls
+- Requires 70% confidence or higher to include a match
+- Stores detailed reasoning for each classification
+
+### Database Schema
+
+The PostgreSQL database includes tables for:
+- `media_items` - Stores Plex media metadata
+- `ai_classifications` - Stores AI classification results with confidence scores
+- `ai_response_cache` - Caches AI responses to minimize API costs
 
 ## Development
 
